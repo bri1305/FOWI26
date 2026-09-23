@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>(FOWI26) 현장실사 SW 앱</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.2/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --forest:#1F4420;
+    --forest-mid:#2C5F2D;
+    --moss:#7FA65C;
+    --blue:#0B4F73;
+    --blue-mid:#0E6E9E;
+    --paper:#F3F1EA;
+    --card:#FFFFFF;
+    --ink:#1C1F1C;
+    --ink-soft:#5B615B;
+    --line:#DEDBD1;
+    --amber:#B5730A;
+    --orange:#D9641E;
+    --orange-dark:#B84E14;
+    --danger:#A23B2E;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--paper);font-family:var(--sans);color:var(--ink);-webkit-tap-highlight-color:transparent;}
+  .wrap{max-width:480px;margin:0 auto;padding-bottom:48px;}
+
+  header{
+    background:linear-gradient(165deg, var(--forest) 0%, var(--forest-mid) 100%);
+    color:#EFEFE7; padding:26px 20px 20px; border-bottom:3px solid var(--moss);
+  }
+  header .tag{font-size:12.5px;color:#BFD8AE;margin:0 0 6px;}
+  header h1{font-size:20px;line-height:1.35;margin:0 0 4px;font-weight:700;}
+  header p{font-size:12.5px;color:#CFE0C6;margin:0;}
+
+  section{padding:16px 16px 0;}
+
+  .group{background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:14px;overflow:hidden;}
+  .group > summary{
+    list-style:none; cursor:pointer; padding:13px 14px; font-size:14px; font-weight:700;
+    display:flex; align-items:center; justify-content:space-between; color:var(--forest-mid);
+    border-bottom:1px solid transparent;
+  }
+  .group[open] > summary{border-bottom:1px solid var(--line);}
+  .group > summary::-webkit-details-marker{display:none;}
+  .group > summary .n{
+    display:inline-flex; align-items:center; justify-content:center; width:20px;height:20px;
+    border-radius:50%; background:var(--forest-mid); color:#fff; font-size:11px; margin-right:8px;
+  }
+  .group > summary .chev{font-size:12px; color:var(--ink-soft); transform:rotate(0deg); transition:transform .15s;}
+  .group[open] > summary .chev{transform:rotate(180deg);}
+  .group .body{padding:4px 14px 14px;}
+
+  .f{margin-bottom:10px;}
+  .f label{display:block; font-size:11.5px; color:var(--ink-soft); margin-bottom:4px;}
+  .f label .req{color:var(--danger);}
+  .f select, .f input[type=text], .f input[type=number], .f textarea{
+    width:100%; border:1px solid var(--line); background:#FCFCF9; border-radius:6px;
+    padding:10px 11px; font-size:14px; font-family:var(--sans); color:var(--ink);
+  }
+  .f select:disabled{color:#B3B3A8;}
+  .f textarea{resize:vertical; min-height:52px;}
+  .frow{display:flex; gap:8px;}
+  .frow .f{flex:1; min-width:0;}
+  .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
+
+  .count-pill{display:inline-block; background:var(--forest-mid); color:#fff; font-size:10px; font-weight:700; padding:1px 7px; border-radius:20px; margin-left:4px;}
+  .hint-small{font-size:11px; color:var(--ink-soft); margin:2px 0 10px; line-height:1.5;}
+  .mode-toggle{
+    display:block; width:100%; text-align:left; background:none; border:none; color:var(--blue-mid);
+    font-size:12px; font-weight:700; padding:6px 0 12px; cursor:pointer; font-family:var(--sans);
+  }
+  .preview-box{background:#F0F5EF; border:1px dashed #B9CDB4; border-radius:8px; padding:9px 11px; margin:-2px 0 12px; font-size:12px; color:var(--ink-soft); line-height:1.6;}
+  .preview-box b{color:var(--forest-mid);}
+
+  .grade-result{
+    border:1px solid var(--line); border-radius:6px; padding:10px 12px; font-size:13px;
+    color:var(--ink-soft); background:#FCFCF9;
+  }
+  .grade-result.filled{font-weight:700; display:flex; align-items:center; gap:8px;}
+  .grade-result .pill{display:inline-flex; align-items:center; justify-content:center; padding:3px 12px; border-radius:20px; font-size:12.5px; font-weight:700;}
+  .grade-result .pill.우수{background:#E4EFDD; color:var(--forest-mid);}
+  .grade-result .pill.보통{background:#FBEBD6; color:var(--amber);}
+  .grade-result .pill.불량{background:#F5E0DC; color:var(--danger);}
+  .grade-result .avg{font-size:11.5px; color:var(--ink-soft); font-weight:400;}
+
+  .capture-btn{
+    width:100%; display:flex; align-items:center; justify-content:center; gap:9px;
+    background:var(--forest-mid); color:#fff; border:none; border-radius:8px;
+    padding:14px; font-size:15px; font-weight:700; cursor:pointer;
+  }
+  .capture-btn.secondary{background:#fff; color:var(--forest-mid); border:1.5px solid var(--forest-mid);}
+  .capture-btn:active{opacity:.85;}
+  input[type=file]{display:none;}
+
+  .photo-chip{
+    display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-soft);
+    background:#F3F1EA; border-radius:6px; padding:6px 9px; margin-top:6px;
+  }
+  .photo-chip img{width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0;}
+  .photo-chip .name{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+
+  .badge{display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; padding:3px 9px 3px 7px; border-radius:20px; margin:8px 0 4px;}
+  .badge.ok{background:#E4EFDD; color:var(--forest-mid);}
+  .badge.warn{background:#FBEBD6; color:var(--amber);}
+  .badge.err{background:#F5E0DC; color:var(--danger);}
+  .badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+  .status-msg{font-size:12.5px; color:var(--ink-soft); margin-bottom:6px;}
+
+  .fallback-btn{width:100%; background:var(--blue-mid); color:#fff; border:none; border-radius:8px; padding:11px; font-size:13.5px; font-weight:700; margin:4px 0 6px; cursor:pointer;}
+  .hint-text{font-size:12px; color:var(--ink-soft); margin-bottom:6px; line-height:1.4;}
+
+  .ref-box{background:#F0F5EF; border:1px dashed #B9CDB4; border-radius:8px; padding:10px 12px; margin-top:10px;}
+  .ref-box .ref-title{font-size:11px; color:var(--forest-mid); font-weight:700; margin-bottom:6px;}
+  .coord-table{width:100%; border-collapse:collapse;}
+  .coord-table tr{border-top:1px solid #DDE7DA;}
+  .coord-table tr:first-child{border-top:none;}
+  .coord-table td{padding:7px 0; vertical-align:top;}
+  .coord-table td.k{width:78px; font-size:11px; color:var(--ink-soft); padding-top:9px;}
+  .coord-table td.v{font-family:var(--mono); font-size:12.5px; line-height:1.5;}
+  .copy-btn{border:1px solid var(--line); background:#fff; color:var(--ink-soft); font-size:10.5px; padding:3px 7px; border-radius:5px; margin-left:6px; cursor:pointer; font-family:var(--sans);}
+  .copy-btn.copied{color:var(--forest-mid); border-color:var(--forest-mid);}
+
+  .add-btn{width:100%; background:var(--orange); color:#fff; border:none; border-radius:8px; padding:14px; font-size:14.5px; font-weight:700; margin-top:4px; cursor:pointer;}
+  .add-btn:active{background:var(--orange-dark);}
+  .add-btn:disabled{background:#B9BAB2; cursor:not-allowed;}
+
+  .edit-banner{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:#FBEBD6; border:1px solid #EBCFA0; border-radius:8px; padding:10px 12px;
+    font-size:12.5px; color:var(--amber); margin-bottom:8px;
+  }
+  .edit-banner b{color:var(--ink);}
+  .edit-banner button{background:none; border:1px solid var(--amber); color:var(--amber); border-radius:6px; padding:4px 10px; font-size:11.5px; font-family:var(--sans); cursor:pointer;}
+
+  .save-status{font-size:11px; color:var(--forest-mid); margin:-4px 0 10px; min-height:14px;}
+
+  .sync-bar{background:var(--forest-mid); padding:12px 16px 14px; color:#fff;}
+  .sync-row{display:flex; align-items:center; gap:8px; margin-bottom:7px;}
+  .sync-row:last-child{margin-bottom:0;}
+  .sync-bar input{
+    flex:1; border:1px solid rgba(255,255,255,.4); background:rgba(255,255,255,.12); color:#fff;
+    border-radius:6px; padding:8px 10px; font-size:13px; font-family:var(--sans);
+  }
+  .sync-bar input::placeholder{color:rgba(255,255,255,.7);}
+  .net-badge{font-size:9px; color:#7FD48A;}
+  .net-badge.off{color:#E0A96D;}
+  .sync-summary{font-size:12px; color:#DCEBD4;}
+  .sync-btn{
+    flex:1; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.5); color:#fff;
+    border-radius:6px; padding:8px; font-size:12.5px; font-weight:700; cursor:pointer; font-family:var(--sans);
+  }
+  .sync-btn.ghost{background:transparent;}
+  .sync-btn.primary{background:#fff; color:var(--forest-mid); border-color:#fff; padding:11px; font-size:13.5px;}
+  .sync-btn.primary.notready{background:rgba(255,255,255,.35); color:#eee; border-color:rgba(255,255,255,.5);}
+  .sync-btn:disabled{opacity:.4; cursor:not-allowed;}
+  .top-hint{font-size:11.5px; margin:2px 0 2px; min-height:15px;}
+  .top-hint.warn{color:#FFE1B8;}
+  .top-hint.ok{color:#CFE0C6; font-weight:700;}
+  .top-hint.err{color:#F8C7BC;}
+
+  .new-btn{
+    width:100%; background:#fff; color:var(--forest-mid); border:1.5px dashed var(--forest-mid);
+    border-radius:8px; padding:11px; font-size:13.5px; font-weight:700; margin-bottom:14px; cursor:pointer;
+  }
+
+  .sync-pill{display:inline-block; font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; margin-left:6px;}
+  .sync-pill.synced{background:#E4EFDD; color:var(--forest-mid);}
+  .sync-pill.pending{background:#FBEBD6; color:var(--amber);}
+  .sync-pill.error{background:#F5E0DC; color:var(--danger);}
+
+  .card{background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:16px;}
+  .log-title{font-size:13.5px; font-weight:700; margin:0 0 10px; display:flex; justify-content:space-between; align-items:baseline;}
+  .log-title span{font-size:11.5px; font-weight:400; color:var(--ink-soft);}
+  .log-empty{font-size:13px; color:var(--ink-soft); padding:6px 0 2px;}
+  .log-item{border-top:1px solid var(--line); padding:10px 0; font-size:12.5px;}
+  .log-item:first-child{border-top:none;}
+  .log-item .row1{display:flex; justify-content:space-between; font-weight:700; margin-bottom:3px;}
+  .log-item .row1 .actions{font-weight:400; font-size:11.5px; flex-shrink:0;}
+  .log-item .row1 .edit{color:var(--blue-mid); cursor:pointer;}
+  .log-item .row1 .del{color:var(--danger); cursor:pointer; margin-left:8px;}
+  .log-item .row2{color:var(--ink-soft); font-size:11.5px; line-height:1.5;}
+  .log-item .row3{font-family:var(--mono); color:var(--ink-soft); font-size:11px; margin-top:2px;}
+
+  .export-btn{width:100%; background:transparent; color:var(--forest-mid); border:1.5px solid var(--forest-mid); border-radius:8px; padding:11px; font-size:13.5px; font-weight:700; margin-top:10px; cursor:pointer;}
+  .export-btn:disabled{opacity:.4; cursor:not-allowed;}
+  .log-actions{display:flex; gap:8px;}
+  .log-actions .export-btn{flex:1;}
+  .clear-btn{flex:0 0 auto; background:transparent; color:var(--danger); border:1.5px solid transparent; border-radius:8px; padding:11px 12px; font-size:12.5px; margin-top:10px; cursor:pointer; font-family:var(--sans);}
+  .clear-btn:disabled{opacity:.35; cursor:not-allowed;}
+
+  footer{padding:6px 20px 0; font-size:11px; color:var(--ink-soft); line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="tag">현장실사/위치좌표 추출용</p>
+    <h1>(FOWI26) 현장실사 SW 앱</h1>
+  </header>
+
+  <div class="sync-bar" id="syncBar">
+    <div class="sync-row">
+      <input type="text" id="surveyorName" placeholder="조사자 이름 (동기화 시 표시됩니다)">
+    </div>
+    <div class="sync-row">
+      <span class="net-badge" id="netBadge">●</span>
+      <span class="sync-summary" id="syncSummary">전체 0건 · 동기화됨 0건 · 대기 0건</span>
+    </div>
+    <div class="top-hint" id="topHint"></div>
+    <div class="sync-row">
+      <button type="button" class="sync-btn" id="newRecordBtn">+ 신규</button>
+      <button type="button" class="sync-btn" id="syncNowBtn">지금 동기화</button>
+      <button type="button" class="sync-btn ghost" id="pullBtn">불러오기</button>
+    </div>
+  </div>
+
+  <section>
+
+    <details class="group" open>
+      <summary><span><span class="n">1</span>기본정보</span><span class="chev">▾</span></summary>
+      <div class="body">
+        <div class="f">
+          <label>기관명 <span class="req">*</span></label>
+          <select id="siteSelect"></select>
+        </div>
+        <div class="f">
+          <label>관리대상(동) <span class="req">*</span></label>
+          <select id="buildingSelect"></select>
+        </div>
+        <div class="frow">
+          <div class="f"><label>부속시설</label><input type="text" id="subFacility" placeholder="해당 시 입력"></div>
+          <div class="f"><label>세부위치</label><input type="text" id="detailLocation" placeholder="예: 1층 로비"></div>
+        </div>
+        <div class="f"><label>관리번호</label><input type="text" id="mgmtNo" placeholder="자산관리번호"></div>
+      </div>
+    </details>
+
+    <details class="group" open>
+      <summary><span><span class="n">2</span>자산정보(공종/품목)</span><span class="chev">▾</span></summary>
+      <div class="body">
+
+        <div id="checklistWrap" style="display:none;">
+          <div class="f">
+            <label>사전 등록된 조사항목 <span id="checklistCount" class="count-pill"></span></label>
+            <select id="checklistSelect"></select>
+          </div>
+          <div class="hint-small">첨부하신 도면·내역 자료에 등록된 항목입니다. 목록에 없는 항목은 아래에서 직접 추가하세요.</div>
+          <div id="checklistPreview" class="preview-box" style="display:none;"></div>
+          <button class="mode-toggle" id="toManualBtn" type="button">+ 목록에 없는 항목 직접 입력 (신규발견 등)</button>
+        </div>
+
+        <div id="manualWrap">
+          <button class="mode-toggle" id="toChecklistBtn" type="button" style="display:none;">← 사전 등록된 항목 목록에서 선택</button>
+          <div class="f">
+            <label>공종 <span class="req">*</span></label>
+            <select id="disciplineSelect"></select>
+          </div>
+          <div class="f">
+            <label>공사설비</label>
+            <select id="midCategorySelect"></select>
+          </div>
+          <div class="f">
+            <label>품목</label>
+            <select id="itemSelect"></select>
+          </div>
+        </div>
+
+        <div class="frow">
+          <div class="f"><label>자산명(명칭)</label><input type="text" id="assetName" placeholder="예: 지붕 방수층"></div>
+          <div class="f"><label>규격/모델/사양</label><input type="text" id="assetSpec"></div>
+        </div>
+        <div class="frow">
+          <div class="f"><label>설치년도</label><input type="text" id="installYear" placeholder="예: 2016"></div>
+          <div class="f"><label>단위</label><input type="text" id="unit" placeholder="예: m², EA"></div>
+        </div>
+        <div class="frow">
+          <div class="f"><label>수량</label><input type="text" id="qty"></div>
+          <div class="f"><label>제조사</label><input type="text" id="maker"></div>
+        </div>
+
+      </div>
+    </details>
+
+    <details class="group" open>
+      <summary><span><span class="n">3</span>자산 현행화</span><span class="chev">▾</span></summary>
+      <div class="body">
+        <div class="f">
+          <label>현행화결과 <span class="req">*</span></label>
+          <select id="updateResult"></select>
+        </div>
+        <div class="frow">
+          <div class="f"><label>현장수량</label><input type="text" id="fieldQty"></div>
+          <div class="f"><label>현장규격</label><input type="text" id="fieldSpec"></div>
+        </div>
+        <div class="f"><label>불일치/신규 사유</label><input type="text" id="mismatchReason" placeholder="현행화결과가 일치가 아닐 경우"></div>
+        <div class="grid3">
+          <div class="f"><label>외관상태 <span class="req">*</span></label><select id="gradeAppearance"></select></div>
+          <div class="f"><label>기능상태 <span class="req">*</span></label><select id="gradeFunction"></select></div>
+          <div class="f"><label>안전상태 <span class="req">*</span></label><select id="gradeSafety"></select></div>
+        </div>
+        <div class="f">
+          <label>상태등급 (3개 항목 평균 · 자동계산)</label>
+          <div class="grade-result" id="gradeOverallBadge">외관·기능·안전상태를 모두 선택하면 자동으로 계산됩니다</div>
+        </div>
+        <div class="f"><label>상태 비고</label><textarea id="stateNote" placeholder="특이사항 기록"></textarea></div>
+      </div>
+    </details>
+
+    <details class="group" open>
+      <summary><span><span class="n">4</span>사진 · GIS 좌표</span><span class="chev">▾</span></summary>
+      <div class="body">
+        <div class="f">
+          <label>대상확인사진 <span class="req">*</span> — 촬영 시 위치좌표 자동 추출</label>
+          <input type="file" id="mainPhotoInput" accept="image/*">
+          <label class="capture-btn" for="mainPhotoInput" id="mainPhotoLabel">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" stroke="#fff" stroke-width="1.8"/><circle cx="12" cy="13.5" r="3.4" stroke="#fff" stroke-width="1.8"/></svg>
+            대상확인사진 촬영/업로드
+          </label>
+          <div id="mainPhotoChip"></div>
+        </div>
+
+        <div id="gpsStatus"></div>
+        <button class="fallback-btn" id="fallbackBtn" style="display:none;" type="button">현재 위치(GPS)로 대신 채우기</button>
+
+        <div class="frow">
+          <div class="f"><label>위도(WGS84)</label><input type="text" id="latField" placeholder="자동 입력됨" readonly></div>
+          <div class="f"><label>경도(WGS84)</label><input type="text" id="lonField" placeholder="자동 입력됨" readonly></div>
+        </div>
+
+        <div class="f" id="mapsPasteBox" style="display:none;">
+          <label>자동 추출이 안 될 때 — 구글 지도에서 좌표 붙여넣기</label>
+          <div class="hint-text">구글 지도 앱에서 현재 위치를 길게 눌러 좌표를 복사한 뒤, 아래에 붙여넣고 "적용"을 눌러주세요. (예: 37.5665, 126.9780)</div>
+          <div class="frow">
+            <input type="text" id="mapsPasteInput" placeholder="예: 37.5665, 126.9780" style="flex:1;">
+            <button type="button" class="fallback-btn" id="mapsPasteApplyBtn" style="width:auto; white-space:nowrap;">적용</button>
+          </div>
+        </div>
+        <div class="f">
+          <label>좌표취득방법 <span class="req">*</span></label>
+          <select id="acqMethod"></select>
+        </div>
+
+        <div class="ref-box" id="refConvBox" style="display:none;">
+          <div class="ref-title">참고용 변환좌표 · 양식 외 정보 (GIS 작업용)</div>
+          <table class="coord-table" id="refCoordTable"></table>
+        </div>
+
+        <div class="f" style="margin-top:10px;">
+          <label>규격확인사진</label>
+          <input type="file" id="subPhotoInput" accept="image/*">
+          <label class="capture-btn secondary" for="subPhotoInput">규격확인사진 촬영/업로드</label>
+          <div id="subPhotoChip"></div>
+        </div>
+
+        <div class="f">
+          <label>추가사진(선택)</label>
+          <input type="file" id="extraPhotoInput" accept="image/*" multiple>
+          <label class="capture-btn secondary" for="extraPhotoInput">추가사진 촬영/업로드</label>
+          <div id="extraPhotoChip"></div>
+        </div>
+      </div>
+    </details>
+
+    <div class="edit-banner" id="editBanner" style="display:none;">
+      <span>✎ 수정 중: <b id="editBannerLabel"></b></span>
+      <button type="button" id="cancelEditBtn">취소</button>
+    </div>
+    <button class="add-btn" id="addBtn">조사기록 저장</button>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="log-title">조사 기록 <span id="logCount">0건</span></div>
+      <div class="save-status" id="saveStatus"></div>
+      <div id="logBody"><div class="log-empty">아직 추가된 기록이 없습니다.</div></div>
+      <div class="log-actions">
+        <button class="export-btn" id="exportBtn" disabled>CSV로 내보내기 (조사양식 컬럼 구조)</button>
+        <button class="clear-btn" id="clearAllBtn" disabled>전체 삭제</button>
+      </div>
+    </div>
+
+  </section>
+
+  <footer>
+    ※ 컬럼 구성은 첨부하신 조사양식(기관명 ~ 좌표취득방법)을 그대로 따랐습니다. 재료비·수선주기 등 LCC분석 항목은 현장 입력 대상이 아니라 사무실 산정 항목이므로, CSV 내보내기 시 빈 컬럼으로 함께 생성해 원본 양식과 열 구조를 맞춰 둡니다.<br>
+    ※ 좌표취득방법은 양식에 정의된 3가지(사진위치정보/구글지도/전문장비) 중에서 선택합니다. 실시간 GPS로 좌표를 채운 경우에는 해당되는 값을 직접 선택해 주세요.<br>
+    ※ 일부 스마트폰은 전송 과정에서 사진의 위치정보(EXIF)가 삭제되거나, 위치정보 없이 촬영된 사진에 0,0에 가까운 좌표가 기록되는 경우가 있습니다 — 이런 경우 자동으로 감지하여 "현재 위치로 대신 채우기"로 안내합니다.<br>
+    ※ CSV 내보내기에는 위도·경도(WGS84) 외에 EPSG:5186 / 5179 / 5174로 변환된 좌표값도 함께 포함됩니다.
+  </footer>
+
+</div>
+
+<script>
+/* ---------- 업로드된 조사양식에서 추출한 참조 데이터 ---------- */
+const FACILITIES = {"101. 국립산림치유원_영주": ["101. 시설관리센터", "102. 행정동", "104. 수련센터_SA동", "105. 수련센터_SB동", "106. 명상센터", "107. 수치유센터", "108. 건강증진센터", "109. 주치소통방", "111. 주치마을 JA101", "111. 주치마을 JA102", "112. 주치마을 JA103", "113. 주치마을 JA104", "114. 주치마을 JB101", "115. 주치마을 JB102", "116. 주치마을 JB103", "117. 주치마을 JB104", "118. 주치마을 JB105", "119. 주치마을 JB106", "120. 주치마을 JB107", "121. 주치마을 JB108", "122. 주치마을 JC101", "123. 주치마을 JC102", "124. 주치마을 JC103", "125. 주치마을 JC104", "131. 장비동", "141. 존치가옥1", "치유숲길", "치유정원"], "101-1. 국립산림치유원_영주_옥녀봉": ["001. 옥녀봉 힐링센터", "002. 연립형숙박동(직원관사)", "011. 숲속큰집(복층형)1", "012. 숲속큰집(복층형)2", "013. 숲속작은집(단층형)1", "014. 숲속작은집(단층형)2", "015. 숲속작은집(단층형)3"], "102. 국립산림치유원_예천": ["010. 안내센터 (행정동)", "020. 산림치유문화센터", "030. 소통방", "031. 문필지구(식당, 배움방, 채움방)", "041. 문필마을 MA101", "042. 문필마을(단독) MA102", "043. 문필마을(단독) MA103", "044. 문필마을(단독) MA104", "045. 문필마을(단독) MA105", "046. 문필마을(단독) MA106", "047. 문필마을(단독) MA107", "048. 문필마을(단독) MA108", "049. 문필마을(단독) MA109", "050. 문필마을(단독) MA110", "051. 문필마을(단독) MA111", "052. 문필마을(단독) MA112", "053. 문필마을(단독) MA113", "054. 문필마을(단독) MA114", "055. 문필마을(단독) MA119", "056. 문필마을(단독) MA120", "057. 문필마을(단독) MA121", "058. 문필마을(단독) MA122", "059. 문필마을(단독) MA123", "060. 문필마을(단독) MA124", "071. 문필마을 MB1", "072. 문필마을 MB2", "073. 문필마을 MB3", "080. 장비관리동", "091. 존치가옥1", "092. 존치가옥2", "093. 존치가옥3", "094. 존치가옥4", "095. 존치가옥5", "096. 존치가옥6", "097. 존치가옥7", "치유정원"], "200. 국립횡성숲체원": ["본부동", "강당동", "강의동", "실습관", "휴게동", "후생동", "생활관A-1동", "생활관A-2동", "생활관B동", "생활관C-1동", "생활관C-2동", "생활관D-1동", "생활관D-2동", "생활관E동", "생활관F동", "생활관G-1동", "생활관G-2동", "생활관G-3동", "생활관H동", "생활관I-1동", "생활관I-2동", "생활관J동", "생활관K동", "체험시설", "산림치유센터", "캠프지원동", "숲속휴게소", "포레스트 힐링센터", "주방동", "야외시설(부속시설) - 호연지기창고", "야외시설(부속시설) - 공동취사장-1", "야외시설(부속시설) - 공동취사장-2", "야외시설(부속시설) - 야외화장실", "야외시설(부속시설) - 오수처리시설", "야외시설(부속시설) - 오수처리시설2", "야외시설(부속시설) - 물탱크실", "야외시설(부속시설) - 관정펌프실1", "야외시설(부속시설) - 관정펌프실2"], "201. 국립칠곡숲체험": ["001. 행정동", "002. 식당동", "003. 강당동", "004. 단체숙박동-1 (5)", "005. 단체숙박동-2 (5)", "010. 숲속의 집 (14개동)", "011. 숲속의집-1", "012. 숲속의집-2", "013. 숲속의집-3", "014. 숲속의집-4", "015. 숲속의집-5", "016. 숲속의집-6", "017. 숲속의집-7", "018. 숲속의집-8", "019. 숲속의집-9", "020. 숲속의집-10", "021. 숲속의집-11", "022. 숲속의집-12", "023. 숲속의집-13", "024. 숲속의집-14", "041. 기타시설 - 관사", "041. 기타시설 - 물탱크실", "041. 기타시설 - 세탁창고", "051. 치유숲길 - 둘레길, 향기숲길, 온놀이숲길, 향기나는바람소리길", "061. 토리유아숲체험원 - 트리하우스 등", "071. 야외시설(부속시설) - 오수펌프장", "072. 야외시설(부속시설) - 진입로", "073. 야외시설(부속시설) - 주차장", "074. 야외시설(부속시설) - 야외화장실", "074. 야외시설(부속시설) - 매표소", "074. 야외시설(부속시설) - 수변데크로드", "074. 야외시설(부속시설) - 중앙광장", "074. 야외시설(부속시설) - 숲속교실", "074. 야외시설(부속시설) - 대화의숲", "074. 야외시설(부속시설) - 다누리길", "074. 야외시설(부속시설) - 도로"]};
+const DISCIPLINES = {"A. 건축": {"01.지붕": ["지붕 방수", "지붕 설치시설(물탱크,기타 구조물)"], "02.외부": ["외벽 마감재"], "03.외부창문": ["외부 창호", "외부 출입문"], "04.천장": ["천장 마감재"], "05.내벽": ["내벽 마감재"], "06.바닥": ["바닥 마감재"], "07.내부창문": ["내부 창호", "내부 출입문"]}, "S. 구조": {"01.구조": ["기초 및 구조 구조부", "조경시설 구조부(데크 등)"]}, "M. 기계": {"01.급수설비": ["급수 펌프", "급수 배관", "저수조"], "02.가스설비": ["가스 공급 시설"], "03.배수설비": ["배수 펌프", "배수 배관"], "04.위생기구설비": ["위생 설비"], "05.환기설비": ["환기(급배기) 설비"], "06.냉난방설비": ["냉·난방 설비"], "07.급탕설비": ["열원설비"], "09.신재생에너지설비": ["지열설비"]}, "E. 전기/통신": {"01.예비전원설비": ["예비전원설비(발전기)"], "02.변전설비": ["수변전 설비"], "03.옥내배전설비": ["배전반 및 간선", "옥내 조명"], "07.피뢰설비 및 옥외전등": ["옥외 조명", "피뢰설비"], "08.통신 및 방송설비": ["통신설비", "방송설비", "방범설비(CCTV 등)"], "09.감시반시설": ["설비감시반", "주차관제설비(주차설비 등)"], "10.신재생에너지설비": ["신재생에너지(태양광 등)", "ESS 및 에너지 저장·절감 장치"], "11. 승강기설비": ["승강기"]}, "F. 소방": {"04.자동화재감지설비": ["화재수신기", "감지기"], "08.소방설비": ["스프링쿨러", "소화전 펌프", "피난 유도 동선", "방화 시설"]}, "C. 토목": {"01.옥외부대시설": ["옹벽 및 석축성", "배수구 및 측구", "사면"], "02.오수처리시설": ["오수처리시설", "오수관로"]}, "L. 조경/산림": {"01.조경시설물": ["데크로드", "목조시설물", "기타 조경시설물"], "02.방역장비": ["방역장비"]}, "O. 기타": {"20.기타장비": ["기타장비"]}};
+const UPDATE_RESULTS = ["조사제외","일치","규격상이","수량상이","신규발견","멸실"];
+const CHECKLISTS = {"201. 국립칠곡숲체험": {"001. 행정동": [{"sub": "", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 방수", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 설치시설(물탱크,기타 구조물)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "02.외부", "item": "외벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 출입문", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "04.천장", "item": "천장 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "05.내벽", "item": "내벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "06.바닥", "item": "바닥 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 출입문", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "기초 및 구조 구조부", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "조경시설 구조부(데크 등)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "01.급수설비", "item": "급수 펌프", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "2.급수설비", "item": "급수 배관", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "3.급수설비", "item": "저수조", "spec": "", "year": "", "qty": ""}, {"sub": "고압가스보관실", "loc": "", "disc": "M. 기계", "mid": "02.가스설비", "item": "LPG 저장탱크", "spec": "50KPA", "year": "2014", "qty": "2"}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "03.배수설비", "item": "배수 펌프", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "03.배수설비", "item": "배수  배관", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "04.위생기구설비", "item": "위생 설비", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "05.환기설비", "item": "환기(급배기) 설비", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "06.냉난방설비", "item": "냉·난방 설비", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "06.냉난방설비", "item": "실외기", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "07.급탕설비", "item": "열원설비", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "09.신재생에너지설비", "item": "지열설비", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "01.예비전원설비", "item": "예비전원설비(발전기)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "02.변전설비", "item": "수변전 설비", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "배전반 및 간선", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "옥내 조명", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "07.피뢰설비 및 옥외전등", "item": "옥외 조명", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "07.피뢰설비 및 옥외전등", "item": "피뢰설비", "spec": "", "year": "", "qty": ""}, {"sub": "구름다리 공중다리 목재다리", "loc": "", "disc": "E. 전기/통신", "mid": "07.피뢰설비 및 옥외전등", "item": "야외 조명", "spec": "", "year": "2024", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "07.피뢰설비 및 옥외전등", "item": "가로등", "spec": "", "year": "2014", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "08.통신 및 방송설비", "item": "통신설비", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "08.통신 및 방송설비", "item": "방송설비", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "09.감시반시설", "item": "CCTV", "spec": "1층 4개, 2층 2개, 행정동 앞 2개", "year": "2019", "qty": "8"}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "09.감시반시설", "item": "주차관제설비(주차설비 등)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "10.신재생에너지설비", "item": "신재생에너지(태양광 등)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "10.신재생에너지설비", "item": "ESS 및 에너지 저장·절감 장치", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "11. 승강기설비", "item": "승강기", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "F. 소방", "mid": "04.자동화재감지설비", "item": "화재수신기", "spec": "AC220V, DV24V, P형1급, 10회로", "year": "2014", "qty": "1"}, {"sub": "", "loc": "", "disc": "F. 소방", "mid": "04.자동화재감지설비", "item": "감지기", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "F. 소방", "mid": "08.소방설비", "item": "스프링쿨러", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "F. 소방", "mid": "08.소방설비", "item": "고압호스릴", "spec": "", "year": "2024", "qty": "15"}, {"sub": "", "loc": "", "disc": "F. 소방", "mid": "08.소방설비", "item": "엔진펌프", "spec": "6.5HP", "year": "2024", "qty": "1"}, {"sub": "", "loc": "", "disc": "F. 소방", "mid": "08.소방설비", "item": "등짐펌프", "spec": "15L", "year": "2024", "qty": "15"}, {"sub": "", "loc": "", "disc": "F. 소방", "mid": "08.소방설비", "item": "피난 유도 동선", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "F. 소방", "mid": "08.소방설비", "item": "방화 시설", "spec": "", "year": "", "qty": "5"}, {"sub": "", "loc": "", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "옹벽 및 석축성,", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "배수구 및 측구", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "사면", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "C. 토목", "mid": "02.오수처리시설", "item": "오수처리시설", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "C. 토목", "mid": "02.오수처리시설", "item": "오수관로", "spec": "", "year": "", "qty": ""}, {"sub": "구름다리 공중다리 목재다리", "loc": "", "disc": "L. 조경/산림", "mid": "01.조경시설물", "item": "목재다리", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "L. 조경/산림", "mid": "01.조경시설물", "item": "데크로드", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "L. 조경/산림", "mid": "01.조경시설물", "item": "목조시설물", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "L. 조경/산림", "mid": "02.방역장비", "item": "연막분무기", "spec": "소형, 2L", "year": "2023", "qty": "2"}, {"sub": "", "loc": "", "disc": "O. 기타", "mid": "20.기타장비", "item": "제설기", "spec": "P7B2A1L08XL-ED213", "year": "", "qty": "1"}, {"sub": "1층", "loc": "1층", "disc": "O. 기타", "mid": "20.기타장비", "item": "AEC 자동 제세동기", "spec": "", "year": "2014", "qty": "1"}], "002. 식당동": [{"sub": "", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 방수", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 설치시설(물탱크,기타 구조물)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "02.외부", "item": "외벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 출입문", "spec": "메인 문, 후문", "year": "2014", "qty": "2"}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "04.천장", "item": "천장 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "05.내벽", "item": "내벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "06.바닥", "item": "바닥 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 출입문", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "기초 및 구조 구조부", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "조경시설 구조부(데크 등)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "02.가스설비", "item": "LPG가스용기", "spec": "454L", "year": "2016", "qty": "2"}, {"sub": "화장실", "loc": "화장실", "disc": "M. 기계", "mid": "04.위생기구설비", "item": "양변기", "spec": "", "year": "2014", "qty": ""}, {"sub": "화장실", "loc": "화장실", "disc": "M. 기계", "mid": "04.위생기구설비", "item": "소변기", "spec": "", "year": "2014", "qty": ""}, {"sub": "1층", "loc": "1층", "disc": "M. 기계", "mid": "06.냉난방설비", "item": "에어컨", "spec": "LG에어컨", "year": "2014", "qty": "1"}, {"sub": "1층", "loc": "1층", "disc": "M. 기계", "mid": "06.냉난방설비", "item": "에어컨 ON/OFF 제어기", "spec": "ON/OFF 제어기 12개", "year": "2014", "qty": "1"}, {"sub": "1층", "loc": "1층", "disc": "M. 기계", "mid": "07.급탕설비", "item": "전기온수기", "spec": "세면대용", "year": "2014", "qty": "4"}, {"sub": "1층", "loc": "1층", "disc": "M. 기계", "mid": "07.급탕설비", "item": "축열식 온수기", "spec": "", "year": "2014", "qty": "4"}, {"sub": "주방", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "전기선로", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "옥내 조명", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "09.감시반시설", "item": "CCTV", "spec": "옥상 1개,광장 2개", "year": "2019", "qty": "3"}, {"sub": "옥상", "loc": "", "disc": "E. 전기/통신", "mid": "10.신재생에너지설비", "item": "태양광 발전설비", "spec": "34kW", "year": "2014", "qty": "1"}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "11. 승강기설비", "item": "승강기", "spec": "", "year": "2014", "qty": "1"}, {"sub": "", "loc": "", "disc": "L. 조경/산림", "mid": "01.조경시설물", "item": "데크", "spec": "", "year": "", "qty": ""}, {"sub": "1층", "loc": "1층", "disc": "O. 기타", "mid": "20.기타장비", "item": "AEC 자동 제세동기", "spec": "", "year": "2014", "qty": "1"}], "003. 강당동": [{"sub": "", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 방수", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 설치시설(물탱크,기타 구조물)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "02.외부", "item": "외벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 출입문", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "04.천장", "item": "천장 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "05.내벽", "item": "내벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "06.바닥", "item": "바닥 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 출입문", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "기초 및 구조 구조부", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "계단", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "조경시설 구조부(데크 등)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "옥내 조명", "spec": "", "year": "", "qty": ""}, {"sub": "옥상", "loc": "", "disc": "E. 전기/통신", "mid": "10.신재생에너지설비", "item": "태양광 발전설비", "spec": "태양광 발전설비 SM-PG8", "year": "2014", "qty": "1"}, {"sub": "옥상", "loc": "", "disc": "E. 전기/통신", "mid": "10.신재생에너지설비", "item": "태양광전지 모듈 배전", "spec": "태양광전지 모듈 250W 17렬8병렬 22.4KW 배전", "year": "2014", "qty": "1"}, {"sub": "옥상", "loc": "", "disc": "E. 전기/통신", "mid": "10.신재생에너지설비", "item": "태양광 전지", "spec": "태양광전지 STM300-MK2", "year": "2014", "qty": "1"}, {"sub": "옥상", "loc": "", "disc": "E. 전기/통신", "mid": "10.신재생에너지설비", "item": "태양광 발전장치 접속단자함", "spec": "태양광 발전장치 접속단자함", "year": "2014", "qty": "1"}], "004. 단체숙박동-1 (5)": [{"sub": "", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 방수", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 설치시설(물탱크,기타 구조물)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "02.외부", "item": "외벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 출입문", "spec": "", "year": "2017", "qty": "5"}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "04.천장", "item": "천장 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "05.내벽", "item": "내벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "06.바닥", "item": "바닥 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 출입문", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "기초 및 구조 구조부", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "조경시설 구조부(데크 등)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "04.위생기구설비", "item": "좌변기", "spec": "장애인화장실 좌변기", "year": "2017", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "06.냉난방설비", "item": "바닥난방기", "spec": "", "year": "2017", "qty": "14"}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "07.급탕설비", "item": "전기온수기", "spec": "전기온수기 SW-600 10BAR 600L", "year": "2017", "qty": "5"}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "07.급탕설비", "item": "전기온수기(변경)", "spec": "220V, 5KW, 500L", "year": "2024", "qty": "5"}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "옥내 조명", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "08.통신 및 방송설비", "item": "통신설비", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "10.신재생에너지설비", "item": "태양광발전장치", "spec": "21kW", "year": "2016", "qty": "1"}, {"sub": "옥상", "loc": "", "disc": "E. 전기/통신", "mid": "10.신재생에너지설비", "item": "태양광 발전설비", "spec": "21kW", "year": "2016", "qty": "1"}], "005. 단체숙박동-2 (5)": [{"sub": "", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 방수", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 설치시설(물탱크,기타 구조물)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "02.외부", "item": "외벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 출입문", "spec": "", "year": "2017", "qty": "5"}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "04.천장", "item": "천장 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "05.내벽", "item": "내벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "06.바닥", "item": "바닥 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 출입문", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "기초 및 구조 구조부", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "조경시설 구조부(데크 등)", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "04.위생기구설비", "item": "좌변기", "spec": "장애인화장실 좌변기", "year": "2017", "qty": ""}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "06.냉난방설비", "item": "바닥난방기", "spec": "", "year": "2017", "qty": "14"}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "07.급탕설비", "item": "전기온수기", "spec": "전기온수기 SW-600 10BAR 600L", "year": "2017", "qty": "5"}, {"sub": "", "loc": "", "disc": "M. 기계", "mid": "07.급탕설비", "item": "전기온수기(변경)", "spec": "220V, 5KW, 500L", "year": "2024", "qty": "5"}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "옥내 조명", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "08.통신 및 방송설비", "item": "통신설비", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "E. 전기/통신", "mid": "09.감시반시설", "item": "CCTV", "spec": "", "year": "2019", "qty": "2"}], "010. 숲속의 집 (14개동)": [{"sub": "숲속의 집 (14개동)", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 방수", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 설치시설(물탱크,기타 구조물)", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "A. 건축", "mid": "02.외부", "item": "외벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "A. 건축", "mid": "03.외부창문", "item": "외부 출입문", "spec": "", "year": "2017", "qty": "14"}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "A. 건축", "mid": "04.천장", "item": "천장 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "A. 건축", "mid": "05.내벽", "item": "내벽 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "A. 건축", "mid": "06.바닥", "item": "바닥 마감재", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 창호", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "A. 건축", "mid": "07.내부창문", "item": "내부 출입문", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "기초 및 구조 구조부", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "S. 구조", "mid": "01.구조", "item": "조경시설 구조부(데크 등)", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "M. 기계", "mid": "01.급수설비", "item": "옥외 고가수조", "spec": "23톤", "year": "2016", "qty": "1"}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "M. 기계", "mid": "01.급수설비", "item": "지하수 급수펌프", "spec": "96톤/일", "year": "2016", "qty": "1"}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "M. 기계", "mid": "04.위생기구설비", "item": "양변기", "spec": "", "year": "2017", "qty": "14"}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "M. 기계", "mid": "06.냉난방설비", "item": "바닥난방기", "spec": "", "year": "2017", "qty": "14"}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "M. 기계", "mid": "06.냉난방설비", "item": "천장형 에어컨", "spec": "LG 천장형 에어컨", "year": "2017", "qty": "14"}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "M. 기계", "mid": "06.냉난방설비", "item": "실외기", "spec": "LG휘센 실외기 MUQ0900S24V", "year": "2017", "qty": "14"}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "M. 기계", "mid": "07.급탕설비", "item": "전기온수기", "spec": "귀뚜라미 축열식 KEWH-100ST 100L", "year": "2017", "qty": "14"}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "M. 기계", "mid": "07.급탕설비", "item": "전기온수기 (변경)", "spec": "220V, 2.5KW, 100L", "year": "2024", "qty": "14"}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "분전함", "spec": "", "year": "2017", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "옥내 조명", "spec": "", "year": "", "qty": ""}, {"sub": "숲속의 집 (14개동)", "loc": "", "disc": "E. 전기/통신", "mid": "09.감시반시설", "item": "CCTV", "spec": "", "year": "2019", "qty": "3"}], "020. 기타시설": [{"sub": "관사", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕 방수", "spec": "", "year": "", "qty": ""}, {"sub": "관사", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "옥상 방수", "spec": "", "year": "", "qty": ""}, {"sub": "관사", "loc": "", "disc": "A. 건축", "mid": "05.내벽", "item": "방염벽지", "spec": "", "year": "2014", "qty": "1"}, {"sub": "관사", "loc": "", "disc": "M. 기계", "mid": "06.냉난방설비", "item": "냉·난방 설비", "spec": "", "year": "2014", "qty": "1"}, {"sub": "물탱크실", "loc": "", "disc": "M. 기계", "mid": "01.급수설비", "item": "물탱크수조", "spec": "95ton", "year": "", "qty": ""}, {"sub": "물탱크실", "loc": "", "disc": "M. 기계", "mid": "01.급수설비", "item": "고가수조", "spec": "스테인레스 23T", "year": "2017", "qty": "1"}, {"sub": "물탱크실", "loc": "", "disc": "M. 기계", "mid": "01.급수설비", "item": "염소 투입기", "spec": "SEGO 염소 투입기", "year": "2014", "qty": "1"}, {"sub": "세탁창고", "loc": "", "disc": "M. 기계", "mid": "01.급수설비", "item": "부스트펌프", "spec": "380V, 5.5KW, 5.3bar", "year": "2014", "qty": "3"}, {"sub": "세탁창고", "loc": "", "disc": "M. 기계", "mid": "01.급수설비", "item": "가압펌프", "spec": "SEGO 저수조펌프 SM-15 50A", "year": "2014", "qty": "3"}, {"sub": "세탁창고", "loc": "세탁실", "disc": "M. 기계", "mid": "04.위생기구설비", "item": "세탁기", "spec": "", "year": "", "qty": ""}, {"sub": "세탁창고", "loc": "", "disc": "M. 기계", "mid": "05.환기설비", "item": "제습기", "spec": "MA-2700P", "year": "2014", "qty": "1"}, {"sub": "세탁창고", "loc": "세탁실", "disc": "M. 기계", "mid": "06.냉난방설비", "item": "LG휘센 에어컨", "spec": "LG휘센 에어컨 x 1EA", "year": "2014", "qty": "1"}, {"sub": "물탱크실", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "옥내 조명", "spec": "", "year": "", "qty": ""}, {"sub": "세탁창고", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "옥내 조명", "spec": "", "year": "", "qty": ""}, {"sub": "세탁창고", "loc": "세탁실", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "수배전반", "spec": "22,900V, 900kW", "year": "2014", "qty": "1"}, {"sub": "세탁창고", "loc": "", "disc": "E. 전기/통신", "mid": "03.옥내배전설비", "item": "옥내 조명", "spec": "", "year": "", "qty": ""}], "023. 치유숲길": [{"sub": "둘레길", "loc": "", "disc": "L. 조경/산림", "mid": "01.조경시설물", "item": "둘레길", "spec": "1.96km", "year": "", "qty": ""}, {"sub": "향기숲길", "loc": "", "disc": "L. 조경/산림", "mid": "01.조경시설물", "item": "향기숲길", "spec": "0.28km", "year": "", "qty": ""}, {"sub": "온놀이숲길", "loc": "", "disc": "L. 조경/산림", "mid": "01.조경시설물", "item": "온놀이숲길", "spec": "1.01km", "year": "", "qty": ""}, {"sub": "향가니난바람소리길", "loc": "", "disc": "L. 조경/산림", "mid": "01.조경시설물", "item": "향가니난바람소리길", "spec": "향기길 0.4, 바람길 0.6, 소리길 1.1km", "year": "", "qty": ""}], "025. 야외시설(부속시설)": [{"sub": "주차장", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "지붕(방수)", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "캐노피", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "유입펌프", "spec": "", "year": "2014", "qty": "2"}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "유량펌프", "spec": "", "year": "2014", "qty": "2"}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "유량교반기", "spec": "", "year": "2014", "qty": "1"}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "반송잉여펌프", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "반응조외1 송풍기", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "반응조 교반기", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "처리수배출장치", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "섬유여과기(공압밸브)", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "여과펌프 x 2EA", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "역세펌프", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "수위계", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "공법제어반", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "오수처리실", "disc": "M. 기계", "mid": "01.급수설비", "item": "배관류", "spec": "", "year": "", "qty": ""}, {"sub": "야외화장실", "loc": "주차장 야외화장실", "disc": "M. 기계", "mid": "01.급수설비", "item": "수도펌프", "spec": "", "year": "", "qty": ""}, {"sub": "야외화장실", "loc": "주차장 야외화장실", "disc": "M. 기계", "mid": "01.급수설비", "item": "급수관로", "spec": "", "year": "", "qty": ""}, {"sub": "야외화장실", "loc": "주차장 야외화장실", "disc": "M. 기계", "mid": "04.위생기구설비", "item": "개수대", "spec": "", "year": "", "qty": "1"}, {"sub": "진입로", "loc": "", "disc": "E. 전기/통신", "mid": "09.감시반시설", "item": "차단기(차단봉)", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "", "disc": "E. 전기/통신", "mid": "09.감시반시설", "item": "CCTV", "spec": "자상주차장 3개, 대피소 1개", "year": "2014", "qty": "5"}, {"sub": "주차장", "loc": "", "disc": "E. 전기/통신", "mid": "09.감시반시설", "item": "CCTV", "spec": "발령지앞/트리하우스/짚라인/잔디광장/몽골텐트앞창고/데크로드앞 각1개", "year": "2019", "qty": "6"}, {"sub": "진입로", "loc": "", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "포장", "spec": "", "year": "2014", "qty": "1"}, {"sub": "주차장", "loc": "오수처리실", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "오수처리시설", "spec": "100㎡/일, SBR공법", "year": "2014", "qty": "1"}, {"sub": "주차장", "loc": "오수처리실", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "오수관로", "spec": "", "year": "", "qty": ""}, {"sub": "주차장", "loc": "", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "배수트렌치", "spec": "", "year": "", "qty": ""}, {"sub": "다누리길", "loc": "산책로", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "목책계단", "spec": "", "year": "2014", "qty": "1"}, {"sub": "다누리길", "loc": "산책로", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "데크", "spec": "", "year": "2014", "qty": "1"}, {"sub": "다누리길", "loc": "산책로", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "데크로드", "spec": "", "year": "2014", "qty": "1"}, {"sub": "다누리길", "loc": "산책로", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "데크로드 사면", "spec": "", "year": "2014", "qty": "1"}, {"sub": "다누리길", "loc": "산책로", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "무장애데크로드", "spec": "", "year": "2014", "qty": "1"}, {"sub": "다누리길", "loc": "야외 산책로 다누리길", "disc": "L. 조경/산림", "mid": "01.조경시설물", "item": "야자매트 보행매트", "spec": "", "year": "2024", "qty": ""}, {"sub": "도로", "loc": "도로", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "포장", "spec": "", "year": "2014", "qty": "1"}, {"sub": "도로", "loc": "외부시설", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "안전펜스", "spec": "", "year": "", "qty": "1"}, {"sub": "도로", "loc": "외부시설", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "그레이팅", "spec": "", "year": "", "qty": "1"}, {"sub": "광장", "loc": "광장", "disc": "C. 토목", "mid": "01.옥외부대시설", "item": "보도블럭", "spec": "", "year": "", "qty": "1"}, {"sub": "수변데크로드", "loc": "수변데크", "disc": "O. 기타", "mid": "20.기타장비", "item": "AEC 자동 제세동기", "spec": "", "year": "2014", "qty": "1"}, {"sub": "진입로", "loc": "데크로드", "disc": "O. 기타", "mid": "20.기타장비", "item": "AEC 자동 제세동기", "spec": "", "year": "2014", "qty": "1"}], "024. 토리유아숲체험원": [{"sub": "트리하우스", "loc": "", "disc": "A. 건축", "mid": "01.지붕", "item": "목재지붕", "spec": "", "year": "", "qty": ""}, {"sub": "트리하우스", "loc": "", "disc": "A. 건축", "mid": "02.외부", "item": "트리하우스", "spec": "", "year": "", "qty": ""}, {"sub": "", "loc": "", "disc": "L. 조경/산림", "mid": "01.조경시설물", "item": "체험기구(짚라인 등)", "spec": "", "year": "", "qty": ""}]}};
+const GRADES = ["우수","보통","불량"];
+const ACQ_METHODS = ["사진위치정보","구글지도","전문장비"];
+
+/* ---------- 좌표계 정의 (참고용 변환) ---------- */
+proj4.defs("EPSG:5186","+proj=tmerc +lat_0=38 +lon_0=127.5 +k=1 +x_0=200000 +y_0=600000 +ellps=GRS80 +units=m +no_defs");
+proj4.defs("EPSG:5179","+proj=tmerc +lat_0=38 +lon_0=127.5 +k=0.9996 +x_0=1000000 +y_0=2000000 +ellps=GRS80 +units=m +no_defs");
+proj4.defs("EPSG:5174","+proj=tmerc +lat_0=38 +lon_0=127.0028902777778 +k=1 +x_0=200000 +y_0=500000 +ellps=bessel +towgs84=-115.80,474.99,674.11,1.16,-2.31,-1.63,6.43 +units=m +no_defs");
+const CRS_LIST = [
+  {code:"EPSG:5186", label:"EPSG:5186", sub:"중부원점(2010)"},
+  {code:"EPSG:5179", label:"EPSG:5179", sub:"UTM-K"},
+  {code:"EPSG:5174", label:"EPSG:5174", sub:"구 중부원점"},
+];
+function convertAll(lat, lon){
+  return CRS_LIST.map(c => { const [x,y] = proj4("EPSG:4326", c.code, [lon, lat]); return {...c, x, y}; });
+}
+
+/* 대한민국 영역을 벗어나거나 "0,0"(Null Island)에 가까운 좌표는
+   위치정보 취득 실패로 간주한다. 일부 카메라는 GPS 신호가 없을 때도
+   GPS IFD 자체는 기록하면서 위도/경도 값만 0(또는 매우 0에 가까운 값)인
+   분수(rational)를 채워 넣는 경우가 있고, 일부 모바일 브라우저/웹뷰는
+   위치 권한이 실패해도 (0,0)으로 "성공" 콜백을 주는 경우가 있어
+   이를 걸러내기 위함이다. */
+function isValidCoord(lat, lon){
+  if (!isFinite(lat) || !isFinite(lon)) return false;
+  if (Math.abs(lat) < 0.001 && Math.abs(lon) < 0.001) return false; // Null Island 근방
+  return true;
+}
+
+/* ---------- EXIF GPS 파서 (순수 JS) ---------- */
+function readString(view, offset, len){ let s=""; for(let i=0;i<len;i++) s+=String.fromCharCode(view.getUint8(offset+i)); return s; }
+
+function getExifGPS(buffer){
+  const view = new DataView(buffer);
+  if (view.byteLength < 4 || view.getUint16(0,false) !== 0xFFD8) return null;
+  let offset = 2; const len = view.byteLength;
+  while (offset + 4 <= len){
+    if (view.getUint8(offset) !== 0xFF) break;
+    const marker = view.getUint8(offset+1);
+    if (marker === 0xD8 || marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7)){ offset += 2; continue; }
+    if (marker === 0xD9) break;
+    const size = view.getUint16(offset+2,false);
+    if (marker === 0xE1 && readString(view, offset+4, 4) === "Exif"){ return parseTiff(view, offset+10); }
+    offset += 2 + size;
+  }
+  return null;
+}
+
+function parseTiff(view, tiffStart){
+  const bo = view.getUint16(tiffStart,false);
+  const little = bo === 0x4949;
+  if (bo !== 0x4949 && bo !== 0x4D4D) return null;
+  const ifd0Offset = view.getUint32(tiffStart+4, little);
+  const ifd0 = readIFD(view, tiffStart, tiffStart+ifd0Offset, little);
+  const gpsEntry = ifd0.find(e => e.tag === 0x8825);
+  if (!gpsEntry) return null;
+  const gpsOffset = readEntryRaw(view, gpsEntry, tiffStart, little);
+  const gpsIFD = readIFD(view, tiffStart, tiffStart+gpsOffset, little);
+  const latRefE = gpsIFD.find(e=>e.tag===1);
+  const latE    = gpsIFD.find(e=>e.tag===2);
+  const lonRefE = gpsIFD.find(e=>e.tag===3);
+  const lonE    = gpsIFD.find(e=>e.tag===4);
+  const altRefE = gpsIFD.find(e=>e.tag===5);
+  const altE    = gpsIFD.find(e=>e.tag===6);
+  if (!latE || !lonE || !latRefE || !lonRefE) return null;
+  const latRef = getValue(view, latRefE, tiffStart, little);
+  const lonRef = getValue(view, lonRefE, tiffStart, little);
+  const latDMS = getValue(view, latE, tiffStart, little);
+  const lonDMS = getValue(view, lonE, tiffStart, little);
+  if (!Array.isArray(latDMS) || !Array.isArray(lonDMS)) return null;
+  let lat = latDMS[0] + latDMS[1]/60 + latDMS[2]/3600;
+  let lon = lonDMS[0] + lonDMS[1]/60 + lonDMS[2]/3600;
+  if (latRef === "S") lat = -lat;
+  if (lonRef === "W") lon = -lon;
+  let alt = null;
+  if (altE){ alt = getValue(view, altE, tiffStart, little); const altRef = altRefE ? getValue(view, altRefE, tiffStart, little) : 0; if (altRef === 1) alt = -alt; }
+  // 일부 카메라는 위치정보가 없을 때도 GPS IFD를 만들되 위도/경도를 0으로 채워
+  // 넣는다 — 이 경우 "위치정보를 찾음"으로 오판하지 않도록 무효 처리한다.
+  if (!isValidCoord(lat, lon)) return null;
+  return {lat, lon, alt};
+}
+
+function readIFD(view, tiffStart, ifdOffset, little){
+  const count = view.getUint16(ifdOffset, little); const entries = [];
+  for (let i=0;i<count;i++){
+    const eOff = ifdOffset + 2 + i*12;
+    entries.push({ tag: view.getUint16(eOff, little), type: view.getUint16(eOff+2, little), count: view.getUint32(eOff+4, little), valOff: eOff+8 });
+  }
+  return entries;
+}
+const TYPE_SIZE = {1:1,2:1,3:2,4:4,5:8,7:1,9:4,10:8};
+function readEntryRaw(view, entry, tiffStart, little){ return view.getUint32(entry.valOff, little); }
+function getValue(view, entry, tiffStart, little){
+  const unit = TYPE_SIZE[entry.type] || 1;
+  const totalSize = unit * entry.count;
+  const dataOffset = totalSize <= 4 ? entry.valOff : tiffStart + view.getUint32(entry.valOff, little);
+  if (entry.type === 2){ return readString(view, dataOffset, Math.max(0, entry.count-1)); }
+  if (entry.type === 5 || entry.type === 10){
+    const vals = [];
+    for (let i=0;i<entry.count;i++){
+      const num = entry.type===5 ? view.getUint32(dataOffset+i*8, little) : view.getInt32(dataOffset+i*8, little);
+      const den = entry.type===5 ? view.getUint32(dataOffset+i*8+4, little) : view.getInt32(dataOffset+i*8+4, little);
+      vals.push(den === 0 ? 0 : num/den);
+    }
+    return entry.count === 1 ? vals[0] : vals;
+  }
+  if (entry.type === 1 || entry.type === 7){ return view.getUint8(dataOffset); }
+  if (entry.type === 3){ return view.getUint16(dataOffset, little); }
+  if (entry.type === 4){ return view.getUint32(dataOffset, little); }
+  return null;
+}
+
+/* ---------- select 채우기 헬퍼 ---------- */
+function fillSelect(sel, options, placeholder){
+  sel.innerHTML = "";
+  if (placeholder){ const o=document.createElement("option"); o.value=""; o.textContent=placeholder; sel.appendChild(o); }
+  options.forEach(v=>{ const o=document.createElement("option"); o.value=v; o.textContent=v; sel.appendChild(o); });
+}
+
+const siteSelect = document.getElementById("siteSelect");
+const buildingSelect = document.getElementById("buildingSelect");
+const disciplineSelect = document.getElementById("disciplineSelect");
+const midCategorySelect = document.getElementById("midCategorySelect");
+const itemSelect = document.getElementById("itemSelect");
+const updateResult = document.getElementById("updateResult");
+const gradeAppearance = document.getElementById("gradeAppearance");
+const gradeFunction = document.getElementById("gradeFunction");
+const gradeSafety = document.getElementById("gradeSafety");
+const acqMethod = document.getElementById("acqMethod");
+
+fillSelect(siteSelect, Object.keys(FACILITIES));
+fillSelect(disciplineSelect, Object.keys(DISCIPLINES));
+fillSelect(updateResult, UPDATE_RESULTS, "선택");
+fillSelect(gradeAppearance, GRADES, "선택");
+fillSelect(gradeFunction, GRADES, "선택");
+fillSelect(gradeSafety, GRADES, "선택");
+fillSelect(acqMethod, ACQ_METHODS, "선택");
+
+/* ---------- 상태등급 자동계산 (외관·기능·안전상태 평균) ---------- */
+const GRADE_SCORE = {"우수":3, "보통":2, "불량":1};
+const SCORE_GRADE = {3:"우수", 2:"보통", 1:"불량"};
+const gradeOverallBadge = document.getElementById("gradeOverallBadge");
+let computedGradeOverall = "";
+
+function recomputeGradeOverall(){
+  const vals = [gradeAppearance.value, gradeFunction.value, gradeSafety.value];
+  if (vals.some(v => !v)){
+    computedGradeOverall = "";
+    gradeOverallBadge.className = "grade-result";
+    gradeOverallBadge.textContent = "외관·기능·안전상태를 모두 선택하면 자동으로 계산됩니다";
+    checkAddEnabled();
+    return;
+  }
+  const scores = vals.map(v => GRADE_SCORE[v]);
+  const avg = scores.reduce((a,b)=>a+b,0) / scores.length;
+  const rounded = Math.min(3, Math.max(1, Math.round(avg)));
+  computedGradeOverall = SCORE_GRADE[rounded];
+  gradeOverallBadge.className = "grade-result filled";
+  gradeOverallBadge.innerHTML = `<span class="pill ${computedGradeOverall}">${computedGradeOverall}</span><span class="avg">평균 ${avg.toFixed(2)}점 (우수3·보통2·불량1)</span>`;
+  checkAddEnabled();
+}
+[gradeAppearance, gradeFunction, gradeSafety].forEach(el=>{
+  el.addEventListener("change", recomputeGradeOverall);
+});
+
+function refreshBuildings(){
+  const site = siteSelect.value;
+  fillSelect(buildingSelect, FACILITIES[site] || []);
+  updateItemMode();
+}
+function refreshMidCategory(){
+  const disc = disciplineSelect.value;
+  const mids = Object.keys(DISCIPLINES[disc] || {});
+  fillSelect(midCategorySelect, mids);
+  refreshItems();
+}
+function refreshItems(){
+  const disc = disciplineSelect.value;
+  const mid = midCategorySelect.value;
+  const items = (DISCIPLINES[disc] && DISCIPLINES[disc][mid]) || [];
+  fillSelect(itemSelect, items);
+  updatePhotoPath();
+}
+function updatePhotoPath(){
+  // 사진 저장경로 필드는 더 이상 사용하지 않음 (폼에서 제거됨)
+}
+
+/* ---------- 사전 등록된 조사항목 체크리스트 (엑셀 도면·내역 자료 기반) ---------- */
+const checklistWrap = document.getElementById("checklistWrap");
+const manualWrap = document.getElementById("manualWrap");
+const checklistSelect = document.getElementById("checklistSelect");
+const checklistCount = document.getElementById("checklistCount");
+const checklistPreview = document.getElementById("checklistPreview");
+const toManualBtn = document.getElementById("toManualBtn");
+const toChecklistBtn = document.getElementById("toChecklistBtn");
+let itemMode = "manual";
+let currentChecklist = [];
+
+function normalizeBuildingKey(name){
+  const stripped = (name || "").replace(/^\d+[\-\d]*\.\s*/, "");
+  const parts = stripped.split(" - ");
+  return { core: parts[0].trim(), sub: parts[1] ? parts[1].trim() : null };
+}
+
+function findChecklistForBuilding(site, buildingName){
+  const list = CHECKLISTS[site];
+  if (!list) return { items: [], subFilter: null };
+  if (list[buildingName]) return { items: list[buildingName], subFilter: null };
+  const { core, sub } = normalizeBuildingKey(buildingName);
+  for (const key of Object.keys(list)){
+    const kCore = normalizeBuildingKey(key).core;
+    if (kCore === core || kCore.includes(core) || core.includes(kCore)){
+      return { items: list[key], subFilter: sub };
+    }
+  }
+  return { items: [], subFilter: null };
+}
+
+function updateItemMode(){
+  const site = siteSelect.value, building = buildingSelect.value;
+  const { items, subFilter } = findChecklistForBuilding(site, building);
+  let list = items;
+  if (subFilter){
+    let filtered = items.filter(it => it.sub === subFilter);
+    if (filtered.length === 0){
+      filtered = items.filter(it => it.sub && (it.sub.includes(subFilter) || subFilter.includes(it.sub)));
+    }
+    if (filtered.length) list = filtered;
+  }
+  currentChecklist = list;
+  if (currentChecklist.length === 0){
+    checklistWrap.style.display = "none";
+    manualWrap.style.display = "block";
+    toChecklistBtn.style.display = "none";
+    itemMode = "manual";
+    disciplineSelect.value = "";
+    refreshMidCategory();
+    document.getElementById("subFacility").value = "";
+    document.getElementById("detailLocation").value = "";
+    document.getElementById("assetSpec").value = "";
+    document.getElementById("installYear").value = "";
+    document.getElementById("qty").value = "";
+    checklistPreview.style.display = "none";
+    updatePhotoPath();
+    return;
+  }
+  fillChecklistSelect();
+  itemMode = "checklist";
+  checklistWrap.style.display = "block";
+  manualWrap.style.display = "none";
+  applyChecklistItem(0);
+}
+
+function fillChecklistSelect(){
+  checklistCount.textContent = `${currentChecklist.length}개`;
+  checklistSelect.innerHTML = currentChecklist.map((it,i)=>{
+    const label = (it.sub ? `[${it.sub}] ` : "") + it.item + ` · ${it.mid}`;
+    return `<option value="${i}">${label}</option>`;
+  }).join("");
+}
+
+function applyChecklistItem(idx){
+  const it = currentChecklist[idx];
+  if (!it) return;
+  disciplineSelect.value = it.disc;
+  refreshMidCategory();
+  midCategorySelect.value = it.mid;
+  refreshItems();
+  itemSelect.value = it.item;
+  document.getElementById("subFacility").value = it.sub || "";
+  document.getElementById("detailLocation").value = it.loc || "";
+  document.getElementById("assetSpec").value = it.spec || "";
+  document.getElementById("installYear").value = it.year || "";
+  document.getElementById("qty").value = it.qty || "";
+
+  const bits = [];
+  if (it.sub) bits.push(`부속시설 <b>${it.sub}</b>`);
+  if (it.loc) bits.push(`세부위치 <b>${it.loc}</b>`);
+  if (it.spec) bits.push(`규격 <b>${it.spec}</b>`);
+  if (it.year) bits.push(`설치년도 <b>${it.year}</b>`);
+  if (it.qty) bits.push(`수량 <b>${it.qty}</b>`);
+  if (bits.length){
+    checklistPreview.style.display = "block";
+    checklistPreview.innerHTML = bits.join(" · ");
+  } else {
+    checklistPreview.style.display = "none";
+  }
+  updatePhotoPath();
+  checkAddEnabled();
+}
+
+checklistSelect.addEventListener("change", ()=> applyChecklistItem(Number(checklistSelect.value)));
+
+toManualBtn.addEventListener("click", ()=>{
+  itemMode = "manual";
+  checklistWrap.style.display = "none";
+  manualWrap.style.display = "block";
+  toChecklistBtn.style.display = currentChecklist.length ? "block" : "none";
+  disciplineSelect.value = ""; refreshMidCategory();
+  document.getElementById("subFacility").value = "";
+  document.getElementById("detailLocation").value = "";
+  document.getElementById("assetSpec").value = "";
+  document.getElementById("installYear").value = "";
+  document.getElementById("qty").value = "";
+  checkAddEnabled();
+});
+toChecklistBtn.addEventListener("click", ()=>{
+  if (!currentChecklist.length) return;
+  itemMode = "checklist";
+  checklistWrap.style.display = "block";
+  manualWrap.style.display = "none";
+  applyChecklistItem(Number(checklistSelect.value || 0));
+});
+
+siteSelect.addEventListener("change", refreshBuildings);
+buildingSelect.addEventListener("change", updateItemMode);
+disciplineSelect.addEventListener("change", refreshMidCategory);
+midCategorySelect.addEventListener("change", refreshItems);
+
+refreshBuildings();
+refreshMidCategory();
+
+/* ---------- 사진 · GPS ---------- */
+let currentCoord = null;      // {lat, lon, source}
+let mainPhotoFile = null;
+let subPhotoFile = null;
+let extraPhotoFiles = [];
+
+const mainPhotoInput = document.getElementById("mainPhotoInput");
+const mainPhotoChip = document.getElementById("mainPhotoChip");
+const subPhotoInput = document.getElementById("subPhotoInput");
+const subPhotoChip = document.getElementById("subPhotoChip");
+const extraPhotoInput = document.getElementById("extraPhotoInput");
+const extraPhotoChip = document.getElementById("extraPhotoChip");
+const gpsStatus = document.getElementById("gpsStatus");
+const fallbackBtn = document.getElementById("fallbackBtn");
+const latField = document.getElementById("latField");
+const lonField = document.getElementById("lonField");
+const refConvBox = document.getElementById("refConvBox");
+const refCoordTable = document.getElementById("refCoordTable");
+const addBtn = document.getElementById("addBtn");
+const mapsPasteBox = document.getElementById("mapsPasteBox");
+const mapsPasteInput = document.getElementById("mapsPasteInput");
+const mapsPasteApplyBtn = document.getElementById("mapsPasteApplyBtn");
+
+function setGpsBadge(kind, text){
+  gpsStatus.innerHTML = `<span class="badge ${kind}"><span class="dot"></span>${text}</span><div class="status-msg" id="gpsMsg"></div>`;
+}
+
+// 자동 추출(사진 EXIF / 실시간 GPS)이 모두 실패했을 때 보여줄 수동 대안들을
+// 한 번에 켜고/끄는 헬퍼. "반드시 자동으로 가져와야" 하지만, 기기·브라우저
+// 조합에 따라 자동 취득이 막히는 경우(보안 컨텍스트, 웹뷰 권한 등)를 대비해
+// 구글 지도 좌표 붙여넣기를 항상 함께 제공한다.
+function showFallbackOptions(){
+  fallbackBtn.style.display = "block";
+  mapsPasteBox.style.display = "block";
+}
+function hideFallbackOptions(){
+  fallbackBtn.style.display = "none";
+  mapsPasteBox.style.display = "none";
+}
+
+// 페이지가 보안 컨텍스트(HTTPS 또는 localhost)가 아니면 대부분의 모바일
+// 브라우저는 navigator.geolocation 자체를 차단한다. 이 경우 "위치 활성화"가
+// OS 설정에서는 켜져 있어도 자동 취득은 항상 실패하므로, 미리 안내하고
+// 구글 지도 붙여넣기 대안을 기본으로 노출해 둔다.
+function checkSecureContextForGeo(){
+  const secure = (typeof window.isSecureContext === "boolean") ? window.isSecureContext : (location.protocol === "https:" || location.hostname === "localhost");
+  if (!secure || !navigator.geolocation){
+    const warn = document.createElement("div");
+    warn.className = "hint-text";
+    warn.style.cssText = "background:#FEF3E8; border:1px solid #F0C48A; border-radius:8px; padding:10px 12px; margin-bottom:8px; color:#8A5A1E;";
+    warn.innerHTML = "⚠ 이 파일이 <b>보안 연결(https)이 아닌 방식</b>으로 열려 있어 실시간 GPS 자동 취득이 기기에서 차단될 수 있습니다. 사진 EXIF 위치정보 추출은 정상 동작하며, 실시간 GPS가 실패하면 아래 \"구글 지도 좌표 붙여넣기\"를 사용해 주세요.";
+    gpsStatus.parentNode.insertBefore(warn, gpsStatus);
+    mapsPasteBox.style.display = "block";
+  }
+}
+
+mainPhotoInput.addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  if (!file) return;
+  mainPhotoFile = file;
+  currentCoord = null;
+  latField.value = ""; lonField.value = "";
+  refConvBox.style.display = "none";
+  checkAddEnabled();
+
+  const url = URL.createObjectURL(file);
+  mainPhotoChip.innerHTML = `<div class="photo-chip"><img src="${url}"><span class="name">${file.name}</span></div>`;
+
+  setGpsBadge("warn","분석 중");
+  document.getElementById("gpsMsg").textContent = "사진의 위치정보를 확인하고 있습니다…";
+  hideFallbackOptions();
+
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    let gps = null;
+    try { gps = getExifGPS(reader.result); } catch(err){ gps = null; }
+    if (gps){
+      currentCoord = {lat: gps.lat, lon: gps.lon, source:"사진 EXIF"};
+      setGpsBadge("ok","위치정보 발견");
+      document.getElementById("gpsMsg").textContent = `사진에서 GPS 좌표를 읽었습니다${gps.alt!=null?` (고도 약 ${gps.alt.toFixed(0)}m)`:""}.`;
+      latField.value = gps.lat.toFixed(7);
+      lonField.value = gps.lon.toFixed(7);
+      acqMethod.value = "사진위치정보";
+      showRefCoords(gps.lat, gps.lon);
+      checkAddEnabled();
+    } else {
+      showFallbackOptions();
+      useLiveGPS(true);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+subPhotoInput.addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  if (!file) return;
+  subPhotoFile = file;
+  const url = URL.createObjectURL(file);
+  subPhotoChip.innerHTML = `<div class="photo-chip"><img src="${url}"><span class="name">${file.name}</span></div>`;
+});
+
+extraPhotoInput.addEventListener("change", (e)=>{
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  extraPhotoFiles = files;
+  extraPhotoChip.innerHTML = files.map(f=>{
+    const url = URL.createObjectURL(f);
+    return `<div class="photo-chip"><img src="${url}"><span class="name">${f.name}</span></div>`;
+  }).join("");
+  checkAddEnabled();
+});
+
+fallbackBtn.addEventListener("click", ()=> useLiveGPS(false));
+
+function useLiveGPS(auto){
+  if (!navigator.geolocation){
+    setGpsBadge("err","GPS 사용 불가");
+    document.getElementById("gpsMsg").textContent = "이 브라우저에서는 위치 기능을 사용할 수 없습니다.";
+    return;
+  }
+  setGpsBadge("warn", auto ? "위치정보 자동 확인 중" : "위치 확인 중");
+  document.getElementById("gpsMsg").textContent = auto
+    ? "사진에 위치정보가 없어 현재 위치로 대신 확인하고 있습니다…"
+    : "현재 위치 신호를 확인하고 있습니다…";
+  navigator.geolocation.getCurrentPosition((pos)=>{
+    const {latitude, longitude, accuracy} = pos.coords;
+    if (!isValidCoord(latitude, longitude)){
+      // 일부 브라우저/웹뷰는 위치 확인에 실제로 실패해도 오류 콜백 대신
+      // (0,0) 좌표로 "성공" 콜백을 준다 — 이를 그대로 받아들이면 화면에
+      // "0.000..." 값이 저장되므로 실패로 간주하고 재시도를 안내한다.
+      setGpsBadge("err","위치 확인 실패");
+      document.getElementById("gpsMsg").textContent = "위치 신호를 정확히 확인하지 못했습니다 (0,0에 가까운 값 수신). 위치 권한과 GPS 신호(실외/개방된 곳)를 확인한 뒤 아래 버튼으로 다시 시도하거나, 구글 지도 좌표를 붙여넣어 주세요.";
+      showFallbackOptions();
+      return;
+    }
+    currentCoord = {lat: latitude, lon: longitude, source:"실시간 GPS"};
+    setGpsBadge("ok","현재 위치 확인됨");
+    document.getElementById("gpsMsg").textContent = `실시간 GPS로 위치를 확인했습니다 (오차 반경 약 ${Math.round(accuracy)}m). 좌표취득방법을 확인해 주세요.`;
+    latField.value = latitude.toFixed(7);
+    lonField.value = longitude.toFixed(7);
+    showRefCoords(latitude, longitude);
+    checkAddEnabled();
+  }, (err)=>{
+    // GeolocationPositionError.code: 1=PERMISSION_DENIED, 2=POSITION_UNAVAILABLE, 3=TIMEOUT
+    // 원인을 구체적으로 알려줘야 사용자가 실제로 무엇을 고쳐야 하는지 알 수 있다
+    // ("위치를 켰는데도 안 됨"의 대부분은 OS 설정이 아니라 이 브라우저/사이트 단위
+    // 권한이 막혀 있거나, 파일을 비-https 방식으로 열어 권한 요청 자체가 차단된 경우다).
+    let msg;
+    if (err && err.code === 1){
+      msg = "이 브라우저(또는 앱 내 웹뷰)에서 위치 접근 권한이 거부되어 있습니다. 브라우저 설정 > 사이트 권한 > 위치에서 허용으로 바꾼 뒤 다시 시도해 주세요. 카카오톡 등 앱 내장 브라우저로 열었다면, 우측 상단 메뉴에서 \"다른 브라우저로 열기\"를 선택해 Safari/Chrome에서 다시 열어보세요.";
+    } else if (err && err.code === 3){
+      msg = "위치 확인이 시간 초과되었습니다. 실외 또는 창가 등 GPS 신호가 잘 잡히는 곳에서 다시 시도해 주세요.";
+    } else if (err && err.code === 2){
+      msg = "위치 신호를 사용할 수 없습니다(실내·터널 등). 신호가 잘 잡히는 곳에서 다시 시도하거나, 구글 지도 좌표를 붙여넣어 주세요.";
+    } else {
+      msg = auto
+        ? "사진에 위치정보가 없고, 현재 위치 접근도 실패했습니다. 위치 권한을 허용한 뒤 아래 버튼으로 다시 시도해 주세요."
+        : "위치 접근 권한을 확인해 주세요.";
+    }
+    setGpsBadge("err","위치 확인 실패");
+    document.getElementById("gpsMsg").textContent = msg;
+    showFallbackOptions();
+  }, { enableHighAccuracy: true, timeout: 15000 });
+}
+
+// ---------- 구글 지도에서 복사한 좌표 붙여넣기 (자동 취득이 막혔을 때의 확실한 대안) ----------
+// 구글 지도 앱에서 지점을 길게 누르면 화면 하단에 "37.5665, 126.9780" 형식의 좌표가 뜨고,
+// 이를 탭하면 클립보드에 복사된다. 그 값을 그대로 붙여넣을 수 있게 한다.
+function parsePastedCoord(text){
+  if (!text) return null;
+  // "37.5665, 126.9780" / "37.5665,126.9780" / "37.5665 126.9780" /
+  // "위도 37.5665 경도 126.9780" 등에서 첫 두 개의 부동소수점 수를 위도, 경도로 읽는다.
+  const nums = text.match(/-?\d+(\.\d+)?/g);
+  if (!nums || nums.length < 2) return null;
+  const lat = parseFloat(nums[0]);
+  const lon = parseFloat(nums[1]);
+  if (isNaN(lat) || isNaN(lon)) return null;
+  return { lat, lon };
+}
+
+mapsPasteApplyBtn.addEventListener("click", ()=>{
+  const parsed = parsePastedCoord(mapsPasteInput.value);
+  if (!parsed){
+    setGpsBadge("err","좌표 인식 실패");
+    document.getElementById("gpsMsg").textContent = "좌표 형식을 인식하지 못했습니다. \"37.5665, 126.9780\"과 같은 형식으로 붙여넣어 주세요.";
+    return;
+  }
+  if (!isValidCoord(parsed.lat, parsed.lon)){
+    setGpsBadge("err","좌표 값 오류");
+    document.getElementById("gpsMsg").textContent = "위도/경도 값이 올바르지 않습니다 (0,0 근처이거나 범위를 벗어남). 값을 다시 확인해 주세요.";
+    return;
+  }
+  currentCoord = { lat: parsed.lat, lon: parsed.lon, source: "구글 지도(수동 입력)" };
+  setGpsBadge("ok","구글 지도 좌표 적용됨");
+  document.getElementById("gpsMsg").textContent = "붙여넣은 좌표를 적용했습니다. 좌표취득방법을 확인해 주세요.";
+  latField.value = parsed.lat.toFixed(7);
+  lonField.value = parsed.lon.toFixed(7);
+  acqMethod.value = "구글지도";
+  showRefCoords(parsed.lat, parsed.lon);
+  checkAddEnabled();
+});
+
+function showRefCoords(lat, lon){
+  const rows = convertAll(lat, lon).map(c=>{
+    const xy = `X ${c.x.toFixed(2)} · Y ${c.y.toFixed(2)}`;
+    return `<tr><td class="k">${c.label}</td><td class="v">${xy}
+      <button class="copy-btn" data-copy="${c.x.toFixed(2)}, ${c.y.toFixed(2)}">복사</button></td></tr>`;
+  });
+  refCoordTable.innerHTML = rows.join("");
+  refConvBox.style.display = "block";
+  refCoordTable.querySelectorAll(".copy-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      navigator.clipboard.writeText(btn.dataset.copy).then(()=>{
+        btn.textContent="복사됨"; btn.classList.add("copied");
+        setTimeout(()=>{btn.textContent="복사"; btn.classList.remove("copied");},1200);
+      });
+    });
+  });
+}
+
+function checkAddEnabled(){
+  const baseOk = buildingSelect.value && disciplineSelect.value && updateResult.value && computedGradeOverall;
+  let ok;
+  if (editingIndex !== null){
+    ok = baseOk;
+  } else {
+    ok = mainPhotoFile && currentCoord && baseOk;
+    // 버튼은 항상 클릭 가능하게 유지한다(비활성화로 숨기지 않음) — 미완성 상태에서
+    // 눌러도 saveCurrentRecord()의 안내 기능(어디가 빠졌는지 스크롤+포커스)이 동작해야
+    // 하기 때문. 준비가 다 되면 라벨을 "저장"으로 바꿔 바로 저장할 수 있음을 알려준다.
+    setSaveButtonsLabel(ok ? "저장" : "조사기록 저장");
+  }
+}
+function setSaveButtonsLabel(text){
+  addBtn.textContent = text;
+}
+[buildingSelect, disciplineSelect, updateResult, acqMethod].forEach(el=>{
+  el.addEventListener("change", checkAddEnabled);
+});
+
+/* ---------- 조사 기록 저장(로컬 저장소) ---------- */
+const STORAGE_KEY = "fowi_survey_records_v1";
+function genId(){
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c=>{
+    const r = Math.random()*16|0, v = c==="x" ? r : (r&0x3|0x8);
+    return v.toString(16);
+  });
+}
+let records = [];
+let editingIndex = null;
+const logBody = document.getElementById("logBody");
+const logCount = document.getElementById("logCount");
+const exportBtn = document.getElementById("exportBtn");
+const clearAllBtn = document.getElementById("clearAllBtn");
+const saveStatus = document.getElementById("saveStatus");
+const editBanner = document.getElementById("editBanner");
+const editBannerLabel = document.getElementById("editBannerLabel");
+const cancelEditBtn = document.getElementById("cancelEditBtn");
+
+/* ---------- Supabase 클라우드 동기화 ---------- */
+const SUPABASE_URL = "https://hcqebckrqiphojsljgft.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjcWViY2tycWlwaG9qc2xqZ2Z0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3MTMyNzcsImV4cCI6MjEwMzI4OTI3N30.tNrrUzCTY7gP8l_7pZ8_08LSRii7bHp8Vn13sEMHa_g";
+const sb = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+const SURVEYOR_KEY = "fowi_surveyor_name";
+const surveyorInput = document.getElementById("surveyorName");
+surveyorInput.value = localStorage.getItem(SURVEYOR_KEY) || "";
+surveyorInput.addEventListener("change", ()=> localStorage.setItem(SURVEYOR_KEY, surveyorInput.value));
+
+const netBadge = document.getElementById("netBadge");
+const syncSummary = document.getElementById("syncSummary");
+const syncNowBtn = document.getElementById("syncNowBtn");
+const pullBtn = document.getElementById("pullBtn");
+
+function updateNetBadge(){
+  const online = navigator.onLine;
+  netBadge.className = "net-badge" + (online ? "" : " off");
+  netBadge.title = online ? "온라인" : "오프라인 (신호가 잡히면 자동 동기화됩니다)";
+}
+window.addEventListener("online", ()=>{ updateNetBadge(); syncPendingRecords(); });
+window.addEventListener("offline", updateNetBadge);
+
+function updateSyncSummary(){
+  const total = records.length;
+  const synced = records.filter(r=>r._syncStatus==="synced").length;
+  const pending = total - synced;
+  syncSummary.textContent = `전체 ${total}건 · 동기화됨 ${synced}건 · 대기 ${pending}건`;
+  syncNowBtn.disabled = pending === 0 || !navigator.onLine || !sb;
+  pullBtn.disabled = !sb;
+}
+
+function toSupabaseRow(rec){
+  const conv = {};
+  (rec._converted || []).forEach(c=>{
+    if (c.code === "EPSG:5186"){ conv.epsg5186_x = c.x; conv.epsg5186_y = c.y; }
+    if (c.code === "EPSG:5179"){ conv.epsg5179_x = c.x; conv.epsg5179_y = c.y; }
+    if (c.code === "EPSG:5174"){ conv.epsg5174_x = c.x; conv.epsg5174_y = c.y; }
+  });
+  const lat = parseFloat(rec["위도(WGS84)"]);
+  const lng = parseFloat(rec["경도(WGS84)"]);
+  return {
+    client_id: rec._id,
+    surveyor: surveyorInput.value || null,
+    org: rec.기관명, building: rec["관리대상(동)"],
+    sub_facility: rec.부속시설 || null, detail_location: rec.세부위치 || null, mgmt_no: rec.관리번호 || null,
+    trade: rec.공종 || null, equip_group: rec.공사설비 || null, item_type: rec.품목 || null,
+    asset_name: rec["자산명(명칭)"] || null, spec: rec["규격/모델/사양"] || null,
+    install_year: rec.설치년도 || null, unit: rec.단위 || null, qty: rec.수량 || null,
+    maker: rec.제조사 || null,
+    verify_result: rec.현행화결과 || null, field_qty: rec.현장수량 || null, field_spec: rec.현장규격 || null,
+    mismatch_reason: rec["불일치/신규사유"] || null,
+    overall_grade: rec.상태등급 || null, ext_grade: rec.외관상태 || null, func_grade: rec.기능상태 || null,
+    safety_grade: rec.안전상태 || null,
+    status_note: rec["상태 비고"] || null,
+    photo_target: rec.대상확인사진 || null, photo_spec: rec.규격확인사진 || null,
+    photo_path: rec.추가사진 || null,
+    lat: isNaN(lat) ? null : lat, lng: isNaN(lng) ? null : lng,
+    geo_method: rec.좌표취득방법 || null,
+    ...conv,
+  };
+}
+
+function fromSupabaseRow(row){
+  const converted = CRS_LIST.map(c=>{
+    const key = c.code.split(":")[1];
+    return { ...c, x: row[`epsg${key}_x`], y: row[`epsg${key}_y`] };
+  });
+  return {
+    _id: row.client_id, _syncStatus: "synced", _savedAt: row.created_at, _converted: converted,
+    _coordSource: row.geo_method === "사진위치정보" ? "사진 EXIF" : (row.geo_method || "서버"),
+    기관명: row.org || "", "관리대상(동)": row.building || "", 부속시설: row.sub_facility || "",
+    세부위치: row.detail_location || "", 관리번호: row.mgmt_no || "",
+    공종: row.trade || "", 공사설비: row.equip_group || "", 품목: row.item_type || "",
+    "자산명(명칭)": row.asset_name || "", "규격/모델/사양": row.spec || "",
+    설치년도: row.install_year || "", 단위: row.unit || "", 수량: row.qty || "",
+    제조사: row.maker || "",
+    현행화결과: row.verify_result || "", 현장수량: row.field_qty || "", 현장규격: row.field_spec || "",
+    "불일치/신규사유": row.mismatch_reason || "",
+    상태등급: row.overall_grade || "", 외관상태: row.ext_grade || "", 기능상태: row.func_grade || "",
+    안전상태: row.safety_grade || "",
+    "상태 비고": row.status_note || "",
+    대상확인사진: row.photo_target || "", 규격확인사진: row.photo_spec || "",
+    추가사진: row.photo_path || "",
+    "위도(WGS84)": row.lat != null ? String(row.lat) : "", "경도(WGS84)": row.lng != null ? String(row.lng) : "",
+    좌표취득방법: row.geo_method || "",
+  };
+}
+
+async function syncPendingRecords(){
+  if (!sb || !navigator.onLine) return;
+  const pending = records.filter(r => r._syncStatus !== "synced");
+  if (!pending.length) return;
+  syncNowBtn.disabled = true;
+  syncNowBtn.textContent = "동기화 중...";
+  for (const rec of pending){
+    try{
+      const { error } = await sb.from("field_survey_records").upsert(toSupabaseRow(rec), { onConflict: "client_id" });
+      rec._syncStatus = error ? "error" : "synced";
+    } catch(e){
+      rec._syncStatus = "error";
+    }
+  }
+  saveRecords();
+  renderLog();
+  syncNowBtn.textContent = "지금 동기화";
+}
+
+async function pullFromServer(){
+  if (!sb) return;
+  pullBtn.disabled = true;
+  pullBtn.textContent = "불러오는 중...";
+  try{
+    const { data, error } = await sb.from("field_survey_records").select("*").order("created_at", { ascending: false }).limit(1000);
+    if (error) throw error;
+    let added = 0;
+    (data || []).forEach(row=>{
+      const idx = records.findIndex(r => r._id === row.client_id);
+      const rec = fromSupabaseRow(row);
+      if (idx >= 0){ if (records[idx]._syncStatus !== "pending") records[idx] = rec; }
+      else { records.push(rec); added++; }
+    });
+    saveRecords();
+    renderLog();
+    alert(`서버 기록 ${data.length}건을 확인했습니다 (새로 추가됨 ${added}건).`);
+  } catch(e){
+    alert("서버에서 불러오지 못했습니다: " + e.message);
+  }
+  pullBtn.disabled = false;
+  pullBtn.textContent = "서버에서 불러오기";
+}
+
+syncNowBtn.addEventListener("click", syncPendingRecords);
+pullBtn.addEventListener("click", pullFromServer);
+document.getElementById("newRecordBtn").addEventListener("click", ()=> resetFormAfterSave());
+setInterval(()=>{ if (navigator.onLine) syncPendingRecords(); }, 30000);
+
+function loadRecords(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    records = raw ? JSON.parse(raw) : [];
+  } catch(e){ records = []; }
+}
+function saveRecords(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    saveStatus.textContent = `기기에 저장됨 · ${new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}`;
+  } catch(e){
+    saveStatus.textContent = "⚠ 저장 실패 (기기 저장공간을 확인해 주세요)";
+  }
+}
+
+function buildRecordFromForm(){
+  const existing = editingIndex !== null ? records[editingIndex] : null;
+  const coordToUse = currentCoord || (existing ? { lat: parseFloat(existing["위도(WGS84)"]), lon: parseFloat(existing["경도(WGS84)"]), source: existing._coordSource } : null);
+  if (!coordToUse || isNaN(coordToUse.lat)) return null;
+  return {
+    기관명: siteSelect.value,
+    "관리대상(동)": buildingSelect.value,
+    부속시설: document.getElementById("subFacility").value,
+    세부위치: document.getElementById("detailLocation").value,
+    관리번호: document.getElementById("mgmtNo").value,
+    공종: disciplineSelect.value,
+    공사설비: midCategorySelect.value,
+    품목: itemSelect.value,
+    "자산명(명칭)": document.getElementById("assetName").value,
+    "규격/모델/사양": document.getElementById("assetSpec").value,
+    설치년도: document.getElementById("installYear").value,
+    단위: document.getElementById("unit").value,
+    수량: document.getElementById("qty").value,
+    제조사: document.getElementById("maker").value,
+    현행화결과: updateResult.value,
+    현장수량: document.getElementById("fieldQty").value,
+    현장규격: document.getElementById("fieldSpec").value,
+    "불일치/신규사유": document.getElementById("mismatchReason").value,
+    상태등급: computedGradeOverall,
+    외관상태: gradeAppearance.value,
+    기능상태: gradeFunction.value,
+    안전상태: gradeSafety.value,
+    "상태 비고": document.getElementById("stateNote").value,
+    대상확인사진: mainPhotoFile ? mainPhotoFile.name : (existing ? existing.대상확인사진 : ""),
+    규격확인사진: subPhotoFile ? subPhotoFile.name : (existing ? existing.규격확인사진 : ""),
+    추가사진: extraPhotoFiles.length ? extraPhotoFiles.map(f=>f.name).join(", ") : (existing ? existing.추가사진 : ""),
+    "위도(WGS84)": coordToUse.lat.toFixed(7),
+    "경도(WGS84)": coordToUse.lon.toFixed(7),
+    좌표취득방법: acqMethod.value,
+    _coordSource: coordToUse.source,
+    _converted: convertAll(coordToUse.lat, coordToUse.lon),
+    _savedAt: existing ? existing._savedAt : new Date().toISOString(),
+    _id: existing ? existing._id : genId(),
+    _syncStatus: "pending",
+  };
+}
+
+function resetFormAfterSave(){
+  mainPhotoFile = null; subPhotoFile = null; extraPhotoFiles = []; currentCoord = null;
+  mainPhotoInput.value = ""; subPhotoInput.value = ""; extraPhotoInput.value = "";
+  mainPhotoChip.innerHTML = ""; subPhotoChip.innerHTML = ""; extraPhotoChip.innerHTML = "";
+  gpsStatus.innerHTML = ""; hideFallbackOptions(); mapsPasteInput.value = "";
+  latField.value = ""; lonField.value = ""; refConvBox.style.display = "none";
+  gradeAppearance.value = ""; gradeFunction.value = ""; gradeSafety.value = "";
+  recomputeGradeOverall();
+  document.getElementById("subFacility").value = "";
+  document.getElementById("detailLocation").value = "";
+  document.getElementById("mgmtNo").value = "";
+  document.getElementById("assetName").value = "";
+  document.getElementById("assetSpec").value = "";
+  document.getElementById("installYear").value = "";
+  document.getElementById("unit").value = "";
+  document.getElementById("qty").value = "";
+  document.getElementById("maker").value = "";
+  updateResult.value = "";
+  document.getElementById("fieldQty").value = "";
+  document.getElementById("fieldSpec").value = "";
+  document.getElementById("mismatchReason").value = "";
+  document.getElementById("stateNote").value = "";
+  editingIndex = null;
+  editBanner.style.display = "none";
+  setSaveButtonsLabel("조사기록 저장");
+  updateItemMode();
+  checkAddEnabled();
+}
+
+addBtn.addEventListener("click", saveCurrentRecord);
+
+const topHint = document.getElementById("topHint");
+function showTopHint(text, kind){
+  topHint.textContent = text;
+  topHint.className = "top-hint " + kind;
+}
+
+function validateRecord(){
+  const missing = [];
+  if (!buildingSelect.value) missing.push({ msg: "① 기본정보에서 관리대상(동)을 선택해 주세요", el: buildingSelect });
+  if (!disciplineSelect.value) missing.push({ msg: "② 자산정보에서 공종을 선택해 주세요", el: disciplineSelect });
+  if (!updateResult.value) missing.push({ msg: "③ 자산 현행화에서 현행화결과를 선택해 주세요", el: updateResult });
+  if (!computedGradeOverall) missing.push({ msg: "③ 자산 현행화에서 외관·기능·안전상태를 모두 선택해 주세요", el: gradeAppearance });
+  if (editingIndex === null){
+    if (!mainPhotoFile) missing.push({ msg: "④ 사진·GIS좌표에서 대상확인사진을 먼저 촬영해 주세요", el: document.getElementById("mainPhotoLabel") });
+    else if (!currentCoord) missing.push({ msg: "④ 사진에서 위치정보를 확인할 수 없습니다 — \"현재 위치로 대신 채우기\"를 눌러주세요", el: fallbackBtn });
+  }
+  return missing;
+}
+
+function goToField(el){
+  if (!el) return;
+  const details = el.closest ? el.closest("details") : null;
+  if (details && !details.open) details.open = true;
+  setTimeout(()=>{
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (el.focus) el.focus({ preventScroll: true });
+  }, 60);
+}
+
+function saveCurrentRecord(){
+  const missing = validateRecord();
+  if (missing.length){
+    showTopHint("⚠ " + missing[0].msg, "warn");
+    goToField(missing[0].el);
+    return;
+  }
+  const rec = buildRecordFromForm();
+  if (!rec){
+    showTopHint("⚠ 좌표 정보를 확인할 수 없습니다. 사진을 다시 촬영해 주세요.", "err");
+    return;
+  }
+  if (editingIndex !== null){ records[editingIndex] = rec; }
+  else { records.push(rec); }
+  saveRecords();
+  renderLog();
+  showTopHint("✓ 저장되었습니다", "ok");
+  resetFormAfterSave();
+  syncPendingRecords();
+}
+
+cancelEditBtn.addEventListener("click", resetFormAfterSave);
+
+function editRecord(idx){
+  const r = records[idx];
+  if (!r) return;
+  editingIndex = idx;
+
+  siteSelect.value = r.기관명;
+  refreshBuildings();
+  buildingSelect.value = r["관리대상(동)"];
+  updateItemMode();
+  // 수정 시에는 항상 직접입력 모드로 펼쳐서 정확한 값(공종/공사설비/품목)을 그대로 보여줌
+  itemMode = "manual";
+  checklistWrap.style.display = "none";
+  manualWrap.style.display = "block";
+  toChecklistBtn.style.display = currentChecklist.length ? "block" : "none";
+  disciplineSelect.value = r.공종 || ""; refreshMidCategory();
+  midCategorySelect.value = r.공사설비 || ""; refreshItems();
+  itemSelect.value = r.품목 || "";
+
+  document.getElementById("subFacility").value = r.부속시설 || "";
+  document.getElementById("detailLocation").value = r.세부위치 || "";
+  document.getElementById("mgmtNo").value = r.관리번호 || "";
+  document.getElementById("assetName").value = r["자산명(명칭)"] || "";
+  document.getElementById("assetSpec").value = r["규격/모델/사양"] || "";
+  document.getElementById("installYear").value = r.설치년도 || "";
+  document.getElementById("unit").value = r.단위 || "";
+  document.getElementById("qty").value = r.수량 || "";
+  document.getElementById("maker").value = r.제조사 || "";
+  updateResult.value = r.현행화결과 || "";
+  document.getElementById("fieldQty").value = r.현장수량 || "";
+  document.getElementById("fieldSpec").value = r.현장규격 || "";
+  document.getElementById("mismatchReason").value = r["불일치/신규사유"] || "";
+  gradeAppearance.value = r.외관상태 || "";
+  gradeFunction.value = r.기능상태 || "";
+  gradeSafety.value = r.안전상태 || "";
+  recomputeGradeOverall();
+  document.getElementById("stateNote").value = r["상태 비고"] || "";
+  acqMethod.value = r.좌표취득방법 || "";
+
+  mainPhotoFile = null; subPhotoFile = null; extraPhotoFiles = []; currentCoord = null;
+  mainPhotoChip.innerHTML = r.대상확인사진 ? `<div class="photo-chip"><span class="name">📎 ${r.대상확인사진} (기존 사진 유지 · 교체하려면 다시 촬영)</span></div>` : "";
+  subPhotoChip.innerHTML = r.규격확인사진 ? `<div class="photo-chip"><span class="name">📎 ${r.규격확인사진}</span></div>` : "";
+  extraPhotoChip.innerHTML = r.추가사진 ? `<div class="photo-chip"><span class="name">📎 ${r.추가사진}</span></div>` : "";
+  latField.value = r["위도(WGS84)"] || ""; lonField.value = r["경도(WGS84)"] || "";
+  if (r["위도(WGS84)"] && r["경도(WGS84)"]) showRefCoords(parseFloat(r["위도(WGS84)"]), parseFloat(r["경도(WGS84)"]));
+  setGpsBadge("ok","기존 좌표 유지");
+  document.getElementById("gpsMsg").textContent = "새 사진을 촬영하면 좌표가 갱신됩니다.";
+
+  editBanner.style.display = "flex";
+  editBannerLabel.textContent = `${r["관리대상(동)"]} · ${r.품목 || r.공사설비 || r.공종}`;
+  setSaveButtonsLabel("수정 내용 저장");
+  checkAddEnabled();
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+
+clearAllBtn.addEventListener("click", ()=>{
+  if (records.length === 0) return;
+  if (!confirm(`저장된 조사기록 ${records.length}건을 모두 삭제할까요? 되돌릴 수 없습니다.`)) return;
+  records = [];
+  saveRecords();
+  renderLog();
+});
+
+function renderLog(){
+  logCount.textContent = `${records.length}건`;
+  exportBtn.disabled = records.length === 0;
+  clearAllBtn.disabled = records.length === 0;
+  updateSyncSummary();
+  if (records.length === 0){ logBody.innerHTML = `<div class="log-empty">아직 추가된 기록이 없습니다.</div>`; return; }
+  logBody.innerHTML = records.map((r,i)=>{
+    const pillClass = r._syncStatus === "synced" ? "synced" : (r._syncStatus === "error" ? "error" : "pending");
+    const pillText = r._syncStatus === "synced" ? "동기화됨" : (r._syncStatus === "error" ? "동기화 실패" : "대기중");
+    return `
+    <div class="log-item">
+      <div class="row1"><span>${r["관리대상(동)"]} <span style="font-weight:400;color:var(--ink-soft);">· ${r.품목 || r.공사설비 || r.공종}</span><span class="sync-pill ${pillClass}">${pillText}</span></span>
+      <span class="actions"><span class="edit" data-i="${i}">수정</span><span class="del" data-i="${i}">삭제</span></span></div>
+      <div class="row2">${r.공종} · 상태등급 ${r.상태등급} · 현행화 ${r.현행화결과}</div>
+      <div class="row3">WGS84 ${r["위도(WGS84)"]}, ${r["경도(WGS84)"]} (${r._coordSource})</div>
+    </div>
+  `;
+  }).join("");
+  logBody.querySelectorAll(".edit").forEach(el=>{
+    el.addEventListener("click", ()=> editRecord(Number(el.dataset.i)));
+  });
+  logBody.querySelectorAll(".del").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      if (Number(el.dataset.i) === editingIndex) resetFormAfterSave();
+      records.splice(Number(el.dataset.i),1);
+      saveRecords();
+      renderLog();
+    });
+  });
+}
+
+/* ---------- CSV 내보내기 (조사양식 컬럼 구조 + 변환좌표 포함) ---------- */
+const CSV_COLUMNS = [
+  "기관명","관리대상(동)","부속시설","세부위치","관리번호",
+  "공종","공사설비","품목","자산명(명칭)","규격/모델/사양","설치년도","단위","수량","제조사",
+  "현행화결과","현장수량","현장규격","불일치/신규사유","상태등급","외관상태","기능상태","안전상태","상태 비고",
+  "대상확인사진","규격확인사진","추가사진","위도(WGS84)","경도(WGS84)","좌표취득방법",
+  "EPSG5186_X","EPSG5186_Y","EPSG5179_X","EPSG5179_Y","EPSG5174_X","EPSG5174_Y",
+  "재료비","노무비","경비","수량","단가(원)","수선주기","수선율","교체주기","교체율","기준근거"
+];
+
+// CSV 컬럼명 -> {EPSG 코드, x/y축} 매핑 (변환좌표는 record._converted 배열에서 조회)
+const EPSG_CSV_COL_MAP = {
+  "EPSG5186_X": ["EPSG:5186","x"], "EPSG5186_Y": ["EPSG:5186","y"],
+  "EPSG5179_X": ["EPSG:5179","x"], "EPSG5179_Y": ["EPSG:5179","y"],
+  "EPSG5174_X": ["EPSG:5174","x"], "EPSG5174_Y": ["EPSG:5174","y"],
+};
+function epsgCsvValue(r, code, axis){
+  const list = r._converted || (isValidCoord(parseFloat(r["위도(WGS84)"]), parseFloat(r["경도(WGS84)"]))
+    ? convertAll(parseFloat(r["위도(WGS84)"]), parseFloat(r["경도(WGS84)"]))
+    : null);
+  if (!list) return "";
+  const c = list.find(cv => cv.code === code);
+  if (!c || c[axis] == null || isNaN(c[axis])) return "";
+  return Number(c[axis]).toFixed(2);
+}
+
+exportBtn.addEventListener("click", ()=>{
+  const lines = [CSV_COLUMNS.map(csvEscape).join(",")];
+  records.forEach(r=>{
+    const row = CSV_COLUMNS.map(col=>{
+      if (EPSG_CSV_COL_MAP[col]){
+        const pair = EPSG_CSV_COL_MAP[col];
+        return csvEscape(epsgCsvValue(r, pair[0], pair[1]));
+      }
+      if (col === "수량" ) return csvEscape(r["수량"] ?? "");
+      return csvEscape(r[col] ?? "");
+    });
+    lines.push(row.join(","));
+  });
+  const blob = new Blob(["\uFEFF"+lines.join("\n")], {type:"text/csv;charset=utf-8;"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `현장실사_조사기록_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+});
+
+function csvEscape(v){
+  const s = String(v ?? "");
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+  return s;
+}
+
+/* ---------- 초기화: 기기에 저장된 기록 불러오기 ---------- */
+loadRecords();
+renderLog();
+updateNetBadge();
+if (navigator.onLine) syncPendingRecords();
+checkSecureContextForGeo();
+</script>
+</body>
+</html>
