@@ -978,6 +978,58 @@ function setSaveButtonsLabel(text){
   el.addEventListener("change", checkAddEnabled);
 });
 
+/* ---------- 사진 원본 파일 로컬 보관(IndexedDB) ----------
+   localStorage에는 텍스트(파일명)만 들어가고 사진 실제 데이터는 저장할 수 없다.
+   저장 즉시 사진 원본을 IndexedDB에 넣어두고, 온라인이 되면 그때 Supabase
+   Storage로 실제 업로드한다 — 이렇게 해야 신호가 없는 현장에서 저장해도
+   나중에 사진까지 안전하게 서버로 올라간다. 업로드에 성공한 사진은
+   IndexedDB에서 지워 기기 저장공간을 아낀다.
+*/
+const PHOTO_DB_NAME = "fowi_photo_blobs";
+const PHOTO_STORE = "blobs";
+function openBlobDB(){
+  return new Promise((resolve, reject)=>{
+    if (!window.indexedDB){ reject(new Error("IndexedDB 미지원")); return; }
+    const req = indexedDB.open(PHOTO_DB_NAME, 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore(PHOTO_STORE); };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function putBlob(key, file){
+  try{
+    const db = await openBlobDB();
+    return await new Promise((resolve)=>{
+      const tx = db.transaction(PHOTO_STORE, "readwrite");
+      tx.objectStore(PHOTO_STORE).put({ blob: file, name: file.name, type: file.type }, key);
+      tx.oncomplete = ()=> resolve(true);
+      tx.onerror = ()=> resolve(false);
+    });
+  } catch(e){ return false; }
+}
+async function getBlob(key){
+  try{
+    const db = await openBlobDB();
+    return await new Promise((resolve)=>{
+      const tx = db.transaction(PHOTO_STORE, "readonly");
+      const req = tx.objectStore(PHOTO_STORE).get(key);
+      req.onsuccess = ()=> resolve(req.result || null);
+      req.onerror = ()=> resolve(null);
+    });
+  } catch(e){ return null; }
+}
+async function deleteBlob(key){
+  try{
+    const db = await openBlobDB();
+    return await new Promise((resolve)=>{
+      const tx = db.transaction(PHOTO_STORE, "readwrite");
+      tx.objectStore(PHOTO_STORE).delete(key);
+      tx.oncomplete = ()=> resolve(true);
+      tx.onerror = ()=> resolve(false);
+    });
+  } catch(e){ return false; }
+}
+
 /* ---------- 조사 기록 저장(로컬 저장소) ---------- */
 const STORAGE_KEY = "fowi_survey_records_v1";
 function genId(){
@@ -1055,6 +1107,9 @@ function toSupabaseRow(rec){
     status_note: rec["상태 비고"] || null,
     photo_target: rec.대상확인사진 || null, photo_spec: rec.규격확인사진 || null,
     photo_path: rec.추가사진 || null,
+    photo_target_url: rec.대상확인사진_url || null,
+    photo_spec_url: rec.규격확인사진_url || null,
+    photo_extra_urls: (rec._extraUrls && rec._extraUrls.filter(Boolean).length) ? rec._extraUrls.filter(Boolean).join(", ") : null,
     lat: isNaN(lat) ? null : lat, lng: isNaN(lng) ? null : lng,
     geo_method: rec.좌표취득방법 || null,
     ...conv,
@@ -1082,21 +1137,76 @@ function fromSupabaseRow(row){
     "상태 비고": row.status_note || "",
     대상확인사진: row.photo_target || "", 규격확인사진: row.photo_spec || "",
     추가사진: row.photo_path || "",
+    대상확인사진_url: row.photo_target_url || "",
+    규격확인사진_url: row.photo_spec_url || "",
+    _extraUrls: row.photo_extra_urls ? row.photo_extra_urls.split(", ") : [],
     "위도(WGS84)": row.lat != null ? String(row.lat) : "", "경도(WGS84)": row.lng != null ? String(row.lng) : "",
     좌표취득방법: row.geo_method || "",
   };
 }
 
+// 사진 실제 파일을 Supabase Storage(survey-photos 버킷)로 업로드한다.
+// 로컬(IndexedDB)에 원본이 없으면(이미 업로드되어 지워졌거나, 애초에 사진이 없는 슬롯이면)
+// 더 할 일이 없다는 뜻이므로 완료로 처리한다.
+async function uploadOnePhoto(recId, slot, applyUrl){
+  const key = recId + ":" + slot;
+  const stored = await getBlob(key);
+  if (!stored) return true;
+  const safeName = (stored.name || "photo.jpg").replace(/[^\w.\-]/g, "_");
+  const path = `${recId}/${slot.replace(":", "_")}_${safeName}`;
+  try{
+    const { error } = await sb.storage.from("survey-photos").upload(path, stored.blob, {
+      upsert: true, contentType: stored.type || stored.blob.type || "image/jpeg",
+    });
+    if (error) return false;
+    const { data } = sb.storage.from("survey-photos").getPublicUrl(path);
+    applyUrl(data.publicUrl);
+    await deleteBlob(key);
+    return true;
+  } catch(e){ return false; }
+}
+
+function photosFullyUploaded(rec){
+  const pu = rec._photoUploaded || {};
+  const needMain = !!rec.대상확인사진;
+  const needSub = !!rec.규격확인사진;
+  const needExtra = (rec._extraCount || 0) > 0;
+  return (!needMain || pu.main) && (!needSub || pu.sub) && (!needExtra || pu.extra);
+}
+
+async function uploadRecordPhotos(rec){
+  if (!rec._photoUploaded) rec._photoUploaded = {};
+  if (rec.대상확인사진 && !rec._photoUploaded.main){
+    const ok = await uploadOnePhoto(rec._id, "main", (url)=>{ rec.대상확인사진_url = url; });
+    if (ok) rec._photoUploaded.main = true;
+  }
+  if (rec.규격확인사진 && !rec._photoUploaded.sub){
+    const ok = await uploadOnePhoto(rec._id, "sub", (url)=>{ rec.규격확인사진_url = url; });
+    if (ok) rec._photoUploaded.sub = true;
+  }
+  if ((rec._extraCount || 0) > 0 && !rec._photoUploaded.extra){
+    rec._extraUrls = rec._extraUrls || [];
+    let allOk = true;
+    for (let i=0;i<rec._extraCount;i++){
+      const idx = i;
+      const ok = await uploadOnePhoto(rec._id, "extra:"+idx, (url)=>{ rec._extraUrls[idx] = url; });
+      if (!ok) allOk = false;
+    }
+    if (allOk) rec._photoUploaded.extra = true;
+  }
+}
+
 async function syncPendingRecords(){
   if (!sb || !navigator.onLine) return;
-  const pending = records.filter(r => r._syncStatus !== "synced");
+  const pending = records.filter(r => r._syncStatus !== "synced" || !photosFullyUploaded(r));
   if (!pending.length) return;
   syncNowBtn.disabled = true;
   syncNowBtn.textContent = "동기화 중...";
   for (const rec of pending){
     try{
+      await uploadRecordPhotos(rec);
       const { error } = await sb.from("field_survey_records").upsert(toSupabaseRow(rec), { onConflict: "client_id" });
-      rec._syncStatus = error ? "error" : "synced";
+      rec._syncStatus = error ? "error" : (photosFullyUploaded(rec) ? "synced" : "pending");
     } catch(e){
       rec._syncStatus = "error";
     }
@@ -1181,6 +1291,12 @@ function buildRecordFromForm(){
     대상확인사진: mainPhotoFile ? mainPhotoFile.name : (existing ? existing.대상확인사진 : ""),
     규격확인사진: subPhotoFile ? subPhotoFile.name : (existing ? existing.규격확인사진 : ""),
     추가사진: extraPhotoFiles.length ? extraPhotoFiles.map(f=>f.name).join(", ") : (existing ? existing.추가사진 : ""),
+    // 새 사진을 고르지 않았으면 기존에 이미 서버로 올라간 사진 URL을 그대로 유지한다.
+    // 새 사진을 골랐으면 아직 업로드 전이므로 URL은 비우고 업로드 완료 시 채워진다.
+    대상확인사진_url: mainPhotoFile ? "" : (existing ? existing.대상확인사진_url : ""),
+    규격확인사진_url: subPhotoFile ? "" : (existing ? existing.규격확인사진_url : ""),
+    _extraUrls: extraPhotoFiles.length ? [] : (existing ? existing._extraUrls : []),
+    _extraCount: extraPhotoFiles.length ? extraPhotoFiles.length : (existing ? (existing._extraCount || 0) : 0),
     "위도(WGS84)": coordToUse.lat.toFixed(7),
     "경도(WGS84)": coordToUse.lon.toFixed(7),
     좌표취득방법: acqMethod.value,
@@ -1189,6 +1305,13 @@ function buildRecordFromForm(){
     _savedAt: existing ? existing._savedAt : new Date().toISOString(),
     _id: existing ? existing._id : genId(),
     _syncStatus: "pending",
+    // 사진을 새로 고른 슬롯은 아직 업로드되지 않았으므로 false로 리셋,
+    // 그대로 둔 슬롯은 기존 업로드 상태를 유지한다.
+    _photoUploaded: {
+      main: mainPhotoFile ? false : (existing && existing._photoUploaded ? !!existing._photoUploaded.main : false),
+      sub: subPhotoFile ? false : (existing && existing._photoUploaded ? !!existing._photoUploaded.sub : false),
+      extra: extraPhotoFiles.length ? false : (existing && existing._photoUploaded ? !!existing._photoUploaded.extra : false),
+    },
   };
 }
 
@@ -1264,13 +1387,22 @@ function saveCurrentRecord(){
     showTopHint("⚠ 좌표 정보를 확인할 수 없습니다. 사진을 다시 촬영해 주세요.", "err");
     return;
   }
+  // 새로 고른 사진 파일을 IndexedDB에 미리 저장해 둔다 — resetFormAfterSave()가
+  // 메모리상의 File 참조를 지우기 전에 반드시 이 순서로 저장해야 사진이
+  // 유실되지 않는다. 이후 syncPendingRecords()가 이 저장된 파일을 서버로 업로드한다.
+  const photoSavePromises = [];
+  if (mainPhotoFile) photoSavePromises.push(putBlob(rec._id + ":main", mainPhotoFile));
+  if (subPhotoFile) photoSavePromises.push(putBlob(rec._id + ":sub", subPhotoFile));
+  extraPhotoFiles.forEach((f, i)=>{
+    photoSavePromises.push(putBlob(rec._id + ":extra:" + i, f));
+  });
   if (editingIndex !== null){ records[editingIndex] = rec; }
   else { records.push(rec); }
   saveRecords();
   renderLog();
   showTopHint("✓ 저장되었습니다", "ok");
   resetFormAfterSave();
-  syncPendingRecords();
+  Promise.all(photoSavePromises).then(()=> syncPendingRecords());
 }
 
 cancelEditBtn.addEventListener("click", resetFormAfterSave);
@@ -1375,6 +1507,7 @@ const CSV_COLUMNS = [
   "현행화결과","현장수량","현장규격","불일치/신규사유","상태등급","외관상태","기능상태","안전상태","상태 비고",
   "대상확인사진","규격확인사진","추가사진","위도(WGS84)","경도(WGS84)","좌표취득방법",
   "EPSG5186_X","EPSG5186_Y","EPSG5179_X","EPSG5179_Y","EPSG5174_X","EPSG5174_Y",
+  "대상확인사진_URL","규격확인사진_URL","추가사진_URL",
   "재료비","노무비","경비","수량","단가(원)","수선주기","수선율","교체주기","교체율","기준근거"
 ];
 
@@ -1394,24 +1527,57 @@ function epsgCsvValue(r, code, axis){
   return Number(c[axis]).toFixed(2);
 }
 
+// 카카오톡/네이버/라인/인스타그램 등 인앱 브라우저는 자체 정책으로 파일
+// 다운로드를 아예 막는 경우가 많다 — 이 경우 코드로는 해결이 불가능하므로
+// 사용자에게 "Chrome/Safari 등 실제 브라우저로 열어주세요"라고 안내한다.
+function isInAppBrowser(){
+  const ua = navigator.userAgent || "";
+  return /KAKAOTALK|NAVER|Line\/|FBAN|FBAV|Instagram|Whale/i.test(ua);
+}
+
 exportBtn.addEventListener("click", ()=>{
-  const lines = [CSV_COLUMNS.map(csvEscape).join(",")];
-  records.forEach(r=>{
-    const row = CSV_COLUMNS.map(col=>{
-      if (EPSG_CSV_COL_MAP[col]){
-        const pair = EPSG_CSV_COL_MAP[col];
-        return csvEscape(epsgCsvValue(r, pair[0], pair[1]));
-      }
-      if (col === "수량" ) return csvEscape(r["수량"] ?? "");
-      return csvEscape(r[col] ?? "");
+  if (!records.length){
+    alert("내보낼 조사기록이 없습니다. 먼저 조사기록을 저장해 주세요.");
+    return;
+  }
+  if (isInAppBrowser()){
+    alert("카카오톡/네이버 등 앱 안에 내장된 브라우저에서는 파일 다운로드가 차단될 수 있습니다.\n\n화면 오른쪽 위 \"···\" 메뉴에서 \"다른 브라우저로 열기\"(또는 Chrome/Safari로 열기)를 선택한 뒤 다시 시도해 주세요.");
+  }
+  try{
+    const lines = [CSV_COLUMNS.map(csvEscape).join(",")];
+    records.forEach(r=>{
+      const row = CSV_COLUMNS.map(col=>{
+        if (EPSG_CSV_COL_MAP[col]){
+          const pair = EPSG_CSV_COL_MAP[col];
+          return csvEscape(epsgCsvValue(r, pair[0], pair[1]));
+        }
+        if (col === "수량" ) return csvEscape(r["수량"] ?? "");
+        if (col === "대상확인사진_URL") return csvEscape(r.대상확인사진_url ?? "");
+        if (col === "규격확인사진_URL") return csvEscape(r.규격확인사진_url ?? "");
+        if (col === "추가사진_URL") return csvEscape((r._extraUrls || []).filter(Boolean).join(", "));
+        return csvEscape(r[col] ?? "");
+      });
+      lines.push(row.join(","));
     });
-    lines.push(row.join(","));
-  });
-  const blob = new Blob(["\uFEFF"+lines.join("\n")], {type:"text/csv;charset=utf-8;"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `현장실사_조사기록_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
+    const blob = new Blob(["\uFEFF"+lines.join("\n")], {type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const filename = `현장실사_조사기록_${new Date().toISOString().slice(0,10)}.csv`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    // 일부 모바일 브라우저(구형 Android WebView 등)는 DOM에 붙어있지 않은
+    // <a> 태그의 click()을 무시한다 — 반드시 body에 추가했다가 클릭 후 제거한다.
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 1000);
+  } catch(e){
+    console.error("CSV export failed", e);
+    alert("CSV 내보내기 중 오류가 발생했습니다. 브라우저를 Chrome 또는 Safari로 바꿔서 다시 시도해 주세요.\n\n오류: " + e.message);
+  }
 });
 
 function csvEscape(v){
