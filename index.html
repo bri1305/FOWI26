@@ -1218,10 +1218,18 @@ async function syncPendingRecords(){
 
 async function pullFromServer(){
   if (!sb) return;
+  // 조사자 이름이 같은 기록만 불러온다 — 다른 조사원이 다른 현장에서 올린
+  // 기록까지 이 핸드폰으로 섞여 들어오지 않도록 막는 안전장치.
+  const myName = surveyorInput.value.trim();
+  if (!myName){
+    alert("먼저 상단에 본인 조사자 이름을 입력해 주세요. 같은 이름으로 저장된 기록만 불러옵니다.");
+    goToField(surveyorInput);
+    return;
+  }
   pullBtn.disabled = true;
   pullBtn.textContent = "불러오는 중...";
   try{
-    const { data, error } = await sb.from("field_survey_records").select("*").order("created_at", { ascending: false }).limit(1000);
+    const { data, error } = await sb.from("field_survey_records").select("*").eq("surveyor", myName).order("created_at", { ascending: false }).limit(1000);
     if (error) throw error;
     let added = 0;
     (data || []).forEach(row=>{
@@ -1232,7 +1240,7 @@ async function pullFromServer(){
     });
     saveRecords();
     renderLog();
-    alert(`서버 기록 ${data.length}건을 확인했습니다 (새로 추가됨 ${added}건).`);
+    alert(`"${myName}" 조사자의 서버 기록 ${data.length}건을 확인했습니다 (새로 추가됨 ${added}건).`);
   } catch(e){
     alert("서버에서 불러오지 못했습니다: " + e.message);
   }
@@ -1240,9 +1248,32 @@ async function pullFromServer(){
   pullBtn.textContent = "서버에서 불러오기";
 }
 
+// "+ 신규" 버튼: 같은 건물에서 다음 항목을 이어서 입력하는 경우가 많으므로
+// 기관명/관리대상(동)은 그대로 유지하고, 공종/공사설비/품목과 사진·좌표·
+// 자산정보 등 나머지 입력만 초기 상태로 되돌린다.
+function fullResetForm(){
+  disciplineSelect.selectedIndex = 0;
+  refreshMidCategory();
+  resetFormAfterSave();
+  showTopHint("새 조사기록 입력을 시작합니다", "ok");
+}
+
 syncNowBtn.addEventListener("click", syncPendingRecords);
 pullBtn.addEventListener("click", pullFromServer);
-document.getElementById("newRecordBtn").addEventListener("click", ()=> resetFormAfterSave());
+document.getElementById("newRecordBtn").addEventListener("click", ()=>{
+  // 저장되지 않은 입력(사진, 좌표, 자산명 등)이 있으면 실수로 날아가지 않도록
+  // 한 번 확인한다 — "데이터는 절대 소실되면 안 된다"는 요구사항에 따른 안전장치.
+  const hasUnsaved = editingIndex !== null || !!mainPhotoFile || !!currentCoord ||
+    document.getElementById("assetName").value.trim() ||
+    document.getElementById("mgmtNo").value.trim();
+  if (hasUnsaved){
+    const msg = editingIndex !== null
+      ? "수정 중인 내용이 아직 저장되지 않았습니다. 저장하지 않고 새로 시작할까요?"
+      : "입력 중인 내용이 아직 저장되지 않았습니다. 저장하지 않고 새로 시작할까요?";
+    if (!confirm(msg)) return;
+  }
+  fullResetForm();
+});
 setInterval(()=>{ if (navigator.onLine) syncPendingRecords(); }, 30000);
 
 function loadRecords(){
