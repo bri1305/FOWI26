@@ -81,6 +81,46 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   }
   .f select:disabled{color:#B3B3A8;}
   .f textarea{resize:vertical; min-height:52px;}
+
+  /* 모바일 네이티브 select(특히 iOS)는 "선택 후 완료" 두 단계를 거쳐야 해서
+     불편하다는 피드백에 따라, 지정된 항목은 한 번 탭하면 바로 선택·적용되는
+     커스텀 선택 시트로 바꾼다. 실제 값은 원본 <select>가 그대로 들고 있어서
+     기존 로직(공종→품목 연동 등)은 손댈 필요가 없다. */
+  .picker-native-select{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0;}
+  .picker-btn{
+    width:100%; border:1px solid var(--line); background:#FCFCF9; border-radius:6px;
+    padding:10px 11px; font-size:14px; font-family:var(--sans); color:var(--ink);
+    text-align:left; display:flex; justify-content:space-between; align-items:center; gap:8px;
+  }
+  .picker-btn:active{background:#F3F1EA;}
+  .picker-btn.placeholder{color:#8B8F87;}
+  .picker-btn .chev{color:var(--ink-soft); flex-shrink:0;}
+  .picker-btn:disabled{color:#B3B3A8; background:#F5F4EF;}
+  .picker-sheet-overlay{
+    position:fixed; inset:0; background:rgba(28,31,28,0.45); z-index:200;
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  .picker-sheet{
+    width:100%; max-width:480px; max-height:70vh; background:var(--card);
+    border-radius:14px 14px 0 0; display:flex; flex-direction:column; overflow:hidden;
+    animation:picker-slide-up .15s ease-out;
+  }
+  @keyframes picker-slide-up{ from{transform:translateY(16px); opacity:0;} to{transform:translateY(0); opacity:1;} }
+  .picker-sheet-header{
+    display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
+    border-bottom:1px solid var(--line); flex-shrink:0;
+  }
+  .picker-sheet-title{font-size:14px; font-weight:700; color:var(--ink);}
+  .picker-sheet-close{border:none; background:none; color:var(--ink-soft); font-size:13px; padding:4px 6px; cursor:pointer;}
+  .picker-sheet-list{overflow-y:auto; -webkit-overflow-scrolling:touch;}
+  .picker-sheet-row{
+    padding:13px 16px; font-size:14.5px; color:var(--ink); border-bottom:1px solid var(--line);
+    display:flex; justify-content:space-between; align-items:center; cursor:pointer;
+  }
+  .picker-sheet-row:last-child{border-bottom:none;}
+  .picker-sheet-row:active{background:#F3F1EA;}
+  .picker-sheet-row.selected{color:var(--forest-mid); font-weight:700;}
+  .picker-sheet-row .check{color:var(--forest-mid); font-weight:700;}
   .frow{display:flex; gap:8px;}
   .frow .f{flex:1; min-width:0;}
   .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
@@ -221,6 +261,15 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 </style>
 </head>
 <body>
+<div class="picker-sheet-overlay" id="pickerSheetOverlay" style="display:none;">
+  <div class="picker-sheet">
+    <div class="picker-sheet-header">
+      <span class="picker-sheet-title" id="pickerSheetTitle"></span>
+      <button type="button" class="picker-sheet-close" id="pickerSheetClose">닫기</button>
+    </div>
+    <div class="picker-sheet-list" id="pickerSheetList"></div>
+  </div>
+</div>
 <div class="wrap">
 
   <header>
@@ -550,6 +599,96 @@ function fillSelect(sel, options, placeholder){
   options.forEach(v=>{ const o=document.createElement("option"); o.value=v; o.textContent=v; sel.appendChild(o); });
 }
 
+// 모바일(특히 iOS)의 기본 select는 "휠에서 고르고 완료 버튼까지 눌러야" 값이
+// 반영돼서 불편하다는 요청에 따라, 지정된 항목은 한 번 탭하면 바로 선택·적용
+// 되는 커스텀 시트로 바꾼다. 실제 값은 원래의 <select>가 그대로 갖고 있고,
+// select.value의 get/set만 가로채서 커스텀 버튼 표시를 동기화하기 때문에
+// 공종→품목 연동, 체크리스트 적용, 수정모드 값 채우기 등 기존 로직은 전혀
+// 손대지 않아도 그대로 동작한다.
+const pickerOverlay = document.getElementById("pickerSheetOverlay");
+const pickerTitleEl = document.getElementById("pickerSheetTitle");
+const pickerListEl = document.getElementById("pickerSheetList");
+let pickerCloseHandler = null;
+
+function closePickerSheet(){
+  pickerOverlay.style.display = "none";
+  pickerListEl.innerHTML = "";
+  pickerCloseHandler = null;
+}
+document.getElementById("pickerSheetClose").addEventListener("click", closePickerSheet);
+pickerOverlay.addEventListener("click", (e)=>{ if (e.target === pickerOverlay) closePickerSheet(); });
+
+function openPickerSheet(select, title){
+  pickerTitleEl.textContent = title;
+  pickerListEl.innerHTML = "";
+  Array.from(select.options).forEach(opt=>{
+    const row = document.createElement("div");
+    row.className = "picker-sheet-row" + (opt.selected ? " selected" : "");
+    row.innerHTML = `<span>${opt.textContent || "(선택 안 함)"}</span>` + (opt.selected ? `<span class="check">✓</span>` : "");
+    row.addEventListener("click", ()=>{
+      select.value = opt.value; // 오버라이드된 setter가 버튼 라벨도 함께 갱신함
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      closePickerSheet();
+    });
+    pickerListEl.appendChild(row);
+  });
+  pickerOverlay.style.display = "flex";
+}
+
+function getFieldLabel(select){
+  const f = select.closest(".f");
+  const label = f ? f.querySelector("label") : null;
+  if (!label) return select.id;
+  const clone = label.cloneNode(true);
+  const req = clone.querySelector(".req");
+  if (req) req.remove();
+  return clone.textContent.trim();
+}
+
+function enhanceSelectPicker(select){
+  const nativeDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
+  const title = getFieldLabel(select);
+
+  const wrapper = document.createElement("div");
+  select.parentNode.insertBefore(wrapper, select);
+  wrapper.appendChild(select);
+  select.classList.add("picker-native-select");
+  select.tabIndex = -1;
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "picker-btn";
+  btn.innerHTML = `<span class="label"></span><span class="chev">▾</span>`;
+  wrapper.appendChild(btn);
+  const labelSpan = btn.querySelector(".label");
+
+  function refreshLabel(){
+    const opt = select.options[select.selectedIndex];
+    const text = opt ? opt.textContent : "";
+    labelSpan.textContent = text || "선택";
+    btn.classList.toggle("placeholder", !text);
+    btn.disabled = select.disabled;
+  }
+
+  Object.defineProperty(select, "value", {
+    get(){ return nativeDesc.get.call(select); },
+    set(v){ nativeDesc.set.call(select, v); refreshLabel(); },
+    configurable: true,
+  });
+
+  btn.addEventListener("click", ()=>{
+    if (select.disabled) return;
+    openPickerSheet(select, title);
+  });
+
+  // fillSelect() 등으로 옵션 목록 자체가 새로 채워질 때(값이 바뀌지 않아도
+  // selectedIndex가 리셋될 수 있음)도 버튼 표시가 항상 최신 상태를 따라가게 한다.
+  new MutationObserver(refreshLabel).observe(select, { childList: true });
+  new MutationObserver(refreshLabel).observe(select, { attributes: true, attributeFilter: ["disabled"] });
+
+  refreshLabel();
+}
+
 const siteSelect = document.getElementById("siteSelect");
 const buildingSelect = document.getElementById("buildingSelect");
 const disciplineSelect = document.getElementById("disciplineSelect");
@@ -560,6 +699,10 @@ const gradeAppearance = document.getElementById("gradeAppearance");
 const gradeFunction = document.getElementById("gradeFunction");
 const gradeSafety = document.getElementById("gradeSafety");
 const acqMethod = document.getElementById("acqMethod");
+
+// 요청하신 9개 항목만 "탭 한 번으로 바로 선택" 방식으로 변경한다.
+[siteSelect, buildingSelect, disciplineSelect, midCategorySelect, itemSelect,
+ updateResult, gradeAppearance, gradeFunction, gradeSafety].forEach(enhanceSelectPicker);
 
 fillSelect(siteSelect, Object.keys(FACILITIES));
 fillSelect(disciplineSelect, Object.keys(DISCIPLINES));
