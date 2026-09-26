@@ -86,7 +86,7 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
      불편하다는 피드백에 따라, 지정된 항목은 한 번 탭하면 바로 선택·적용되는
      커스텀 선택 시트로 바꾼다. 실제 값은 원본 <select>가 그대로 들고 있어서
      기존 로직(공종→품목 연동 등)은 손댈 필요가 없다. */
-  .picker-native-select{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0;}
+  .picker-native-select{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0; pointer-events:none;}
   .picker-btn{
     width:100%; border:1px solid var(--line); background:#FCFCF9; border-radius:6px;
     padding:10px 11px; font-size:14px; font-family:var(--sans); color:var(--ink);
@@ -234,6 +234,11 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .log-title{font-size:13.5px; font-weight:700; margin:0 0 10px; display:flex; justify-content:space-between; align-items:baseline;}
   .log-title span{font-size:11.5px; font-weight:400; color:var(--ink-soft);}
   .log-empty{font-size:13px; color:var(--ink-soft); padding:6px 0 2px;}
+  .log-group-header{
+    margin-top:12px; padding:6px 8px; background:#EFEDE4; border-radius:6px;
+    font-size:11.5px; font-weight:700; color:var(--forest-mid);
+  }
+  .log-group-header:first-child{margin-top:0;}
   .log-item{border-top:1px solid var(--line); padding:10px 0; font-size:12.5px;}
   .log-item:first-child{border-top:none;}
   .log-item .row1{display:flex; justify-content:space-between; font-weight:700; margin-bottom:3px;}
@@ -279,7 +284,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 
   <div class="sync-bar" id="syncBar">
     <div class="sync-row">
-      <input type="text" id="surveyorName" placeholder="조사자 이름 (동기화 시 표시됩니다)">
+      <input type="text" id="surveyorName" placeholder="조사자 이름 (동기화 시 표시됩니다)" style="flex:1.4;">
+      <input type="date" id="surveyDate" style="flex:1;">
     </div>
     <div class="sync-row">
       <span class="net-badge" id="netBadge">●</span>
@@ -708,6 +714,21 @@ fillSelect(siteSelect, Object.keys(FACILITIES));
 fillSelect(disciplineSelect, Object.keys(DISCIPLINES));
 fillSelect(document.getElementById("logFilterDiscipline"), Object.keys(DISCIPLINES), "전체 보기");
 fillSelect(document.getElementById("pullOrgFilter"), Object.keys(FACILITIES), "전체 기관에서 불러오기");
+// 상단에서 시설(기관)을 선택하면 ① 기본정보의 기관명도 자동으로 같은 시설로
+// 맞춰준다 — 조사자가 시설을 한 번만 고르면 조사기록 저장과 서버 불러오기가
+// 항상 같은 시설을 기준으로 동작하도록 하기 위함.
+function syncSiteFromTopFilter(){
+  const org = document.getElementById("pullOrgFilter").value;
+  if (org && siteSelect.value !== org){
+    siteSelect.value = org;
+    refreshBuildings();
+  }
+}
+document.getElementById("pullOrgFilter").addEventListener("change", ()=>{
+  syncSiteFromTopFilter();
+  logPage = 0;
+  renderLog();
+});
 fillSelect(updateResult, UPDATE_RESULTS, "선택");
 fillSelect(gradeAppearance, GRADES, "선택");
 fillSelect(gradeFunction, GRADES, "선택");
@@ -1223,6 +1244,17 @@ const surveyorInput = document.getElementById("surveyorName");
 surveyorInput.value = localStorage.getItem(SURVEYOR_KEY) || "";
 surveyorInput.addEventListener("change", ()=> localStorage.setItem(SURVEYOR_KEY, surveyorInput.value));
 
+// 조사날짜: 기본값은 오늘 날짜이고, 마지막으로 쓴 날짜를 기억해 두되 날짜가
+// 바뀌면(다음 날 앱을 열면) 자동으로 오늘 날짜로 다시 맞춘다.
+const SURVEY_DATE_KEY = "fowi_survey_date";
+const surveyDateInput = document.getElementById("surveyDate");
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+surveyDateInput.value = localStorage.getItem(SURVEY_DATE_KEY) || todayStr();
+surveyDateInput.addEventListener("change", ()=> localStorage.setItem(SURVEY_DATE_KEY, surveyDateInput.value));
+
 const netBadge = document.getElementById("netBadge");
 const syncSummary = document.getElementById("syncSummary");
 const syncNowBtn = document.getElementById("syncNowBtn");
@@ -1257,6 +1289,7 @@ function toSupabaseRow(rec){
   return {
     client_id: rec._id,
     surveyor: surveyorInput.value || null,
+    survey_date: rec.조사일자 || null,
     org: rec.기관명, building: rec["관리대상(동)"],
     sub_facility: rec.부속시설 || null, detail_location: rec.세부위치 || null, mgmt_no: rec.관리번호 || null,
     trade: rec.공종 || null, equip_group: rec.공사설비 || null, item_type: rec.품목 || null,
@@ -1287,6 +1320,7 @@ function fromSupabaseRow(row){
   return {
     _id: row.client_id, _syncStatus: "synced", _savedAt: row.created_at, _converted: converted,
     _coordSource: row.geo_method === "사진위치정보" ? "사진 EXIF" : (row.geo_method || "서버"),
+    조사일자: row.survey_date || "",
     기관명: row.org || "", "관리대상(동)": row.building || "", 부속시설: row.sub_facility || "",
     세부위치: row.detail_location || "", 관리번호: row.mgmt_no || "",
     공종: row.trade || "", 공사설비: row.equip_group || "", 품목: row.item_type || "",
@@ -1418,8 +1452,23 @@ async function syncPendingRecords(){
   syncNowBtn.textContent = "지금 동기화";
 }
 
+// "+ 신규"는 반드시 특정 시설(기관)을 먼저 고른 뒤에만 쓸 수 있게 한다 —
+// 새 기록은 정확히 하나의 시설에 속해야 하므로 "전체 기관"으로는 시작할 수
+// 없다. "불러오기"는 "전체 기관에서 불러오기"도 유효한 선택이므로 이 검사를
+// 적용하지 않는다(전체를 고르면 하단 목록이 시설별로 묶여서 표시된다).
+function requireOrgSelected(){
+  const org = document.getElementById("pullOrgFilter").value;
+  if (!org){
+    alert("먼저 상단에서 시설(기관)을 선택해 주세요.");
+    document.getElementById("pullOrgFilter").focus();
+    return false;
+  }
+  return true;
+}
+
 async function pullFromServer(){
   if (!sb) return;
+  syncSiteFromTopFilter();
   // 조사자 이름이 같은 기록만 불러온다 — 다른 조사원이 다른 현장에서 올린
   // 기록까지 이 핸드폰으로 섞여 들어오지 않도록 막는 안전장치.
   // 단, 관리자용으로 이름 칸에 "*"를 입력하면 전체 조사원의 기록을 모두 불러온다.
@@ -1459,10 +1508,11 @@ async function pullFromServer(){
   pullBtn.textContent = "서버에서 불러오기";
 }
 
-// "+ 신규" 버튼: 같은 건물에서 다음 항목을 이어서 입력하는 경우가 많으므로
-// 기관명/관리대상(동)은 그대로 유지하고, 공종/공사설비/품목과 사진·좌표·
-// 자산정보 등 나머지 입력만 초기 상태로 되돌린다.
+// "+ 신규" 버튼: ① 기본정보의 기관명을 상단에서 선택한 시설과 맞추고
+// (관리대상(동)은 그 시설의 첫 건물로 자동 설정됨), 공종/공사설비/품목과
+// 사진·좌표·자산정보 등 나머지 입력은 초기 상태로 되돌린다.
 function fullResetForm(){
+  syncSiteFromTopFilter();
   disciplineSelect.selectedIndex = 0;
   refreshMidCategory();
   resetFormAfterSave();
@@ -1472,6 +1522,7 @@ function fullResetForm(){
 syncNowBtn.addEventListener("click", syncPendingRecords);
 pullBtn.addEventListener("click", pullFromServer);
 document.getElementById("newRecordBtn").addEventListener("click", ()=>{
+  if (!requireOrgSelected()) return;
   // 저장되지 않은 입력(사진, 좌표, 자산명 등)이 있으면 실수로 날아가지 않도록
   // 한 번 확인한다 — "데이터는 절대 소실되면 안 된다"는 요구사항에 따른 안전장치.
   const hasUnsaved = editingIndex !== null || !!mainPhotoFile || !!currentCoord ||
@@ -1507,6 +1558,7 @@ function buildRecordFromForm(){
   const coordToUse = currentCoord || (existing ? { lat: parseFloat(existing["위도(WGS84)"]), lon: parseFloat(existing["경도(WGS84)"]), source: existing._coordSource } : null);
   if (!coordToUse || isNaN(coordToUse.lat)) return null;
   return {
+    조사일자: surveyDateInput.value || todayStr(),
     기관명: siteSelect.value,
     "관리대상(동)": buildingSelect.value,
     부속시설: document.getElementById("subFacility").value,
@@ -1744,16 +1796,31 @@ function renderLogPagination(page, totalPages){
 
 function renderLog(){
   const filterVal = logFilterDiscipline.value;
+  // 상단의 "불러오기" 기관 필터에서 특정 기관을 선택해 두었으면, 서버에서
+  // 그 기관 기록만 불러오는 것뿐 아니라 하단 조사기록 목록도 그 기관 것만
+  // 보이도록 함께 필터링한다 (다른 기관 기록까지 섞여 보이지 않게).
+  const orgFilterVal = document.getElementById("pullOrgFilter").value;
   // 필터는 화면 표시용일 뿐 — 원본 records 배열의 실제 인덱스(i)를 그대로
   // data-i에 담아서, 필터링/정렬/페이징된 상태에서 수정/삭제를 눌러도 엉뚱한
   // 기록이 아니라 정확히 그 기록을 가리키도록 한다.
   const withIndex = records.map((r,i)=>({ r, i }));
-  const filteredUnsorted = filterVal ? withIndex.filter(x => x.r.공종 === filterVal) : withIndex;
+  const filteredUnsorted = withIndex
+    .filter(x => !filterVal || x.r.공종 === filterVal)
+    .filter(x => !orgFilterVal || x.r.기관명 === orgFilterVal);
   // 하루 100건 넘게 쌓이는 경우를 대비해 최근 저장/불러온 기록이 위로 오도록
   // 정렬한 뒤(원본 records 배열 순서는 그대로 둠) 20건씩 페이지로 나눠 보여준다.
-  const filtered = filteredUnsorted.slice().sort((a,b) => new Date(b.r._savedAt || 0) - new Date(a.r._savedAt || 0));
+  // 상단에서 "전체 기관에서 불러오기"(시설 미선택)를 골랐을 때는 여러 시설의
+  // 기록이 섞이므로, 시설별로 묶어서 보여주고 같은 시설 안에서는 최신순으로 정렬한다.
+  const filtered = filteredUnsorted.slice().sort((a,b)=>{
+    if (!orgFilterVal){
+      const orgCmp = (a.r.기관명 || "").localeCompare(b.r.기관명 || "", "ko");
+      if (orgCmp !== 0) return orgCmp;
+    }
+    return new Date(b.r._savedAt || 0) - new Date(a.r._savedAt || 0);
+  });
 
-  logCount.textContent = filterVal ? `${filtered.length}건 / 전체 ${records.length}건` : `${records.length}건`;
+  const anyFilter = !!filterVal || !!orgFilterVal;
+  logCount.textContent = anyFilter ? `${filtered.length}건 / 전체 ${records.length}건` : `${records.length}건`;
   exportBtn.disabled = records.length === 0;
   clearAllBtn.disabled = records.length === 0;
   updateSyncSummary();
@@ -1763,13 +1830,22 @@ function renderLog(){
   if (logPage < 0) logPage = 0;
 
   if (records.length === 0){ logBody.innerHTML = `<div class="log-empty">아직 추가된 기록이 없습니다.</div>`; logPagination.innerHTML = ""; return; }
-  if (filtered.length === 0){ logBody.innerHTML = `<div class="log-empty">선택한 공종에 해당하는 기록이 없습니다.</div>`; logPagination.innerHTML = ""; return; }
+  if (filtered.length === 0){ logBody.innerHTML = `<div class="log-empty">선택한 조건에 해당하는 기록이 없습니다.</div>`; logPagination.innerHTML = ""; return; }
 
   const pageItems = filtered.slice(logPage * LOG_PAGE_SIZE, (logPage + 1) * LOG_PAGE_SIZE);
+  // "전체 기관"일 때만 시설별 구분 헤더를 넣는다. 특정 시설을 골랐을 때는
+  // 목록 전체가 이미 그 시설 것이므로 헤더가 필요 없다.
+  let lastGroupOrg = null;
   logBody.innerHTML = pageItems.map(({r,i})=>{
+    let headerHtml = "";
+    if (!orgFilterVal && r.기관명 !== lastGroupOrg){
+      headerHtml = `<div class="log-group-header">${r.기관명 || "(기관명 없음)"}</div>`;
+      lastGroupOrg = r.기관명;
+    }
     const pillClass = r._syncStatus === "synced" ? "synced" : (r._syncStatus === "error" ? "error" : "pending");
     const pillText = r._syncStatus === "synced" ? "동기화됨" : (r._syncStatus === "error" ? "동기화 실패" : "대기중");
     return `
+    ${headerHtml}
     <div class="log-item">
       <div class="row1"><span>${r["관리대상(동)"]} <span style="font-weight:400;color:var(--ink-soft);">· ${r.품목 || r.공사설비 || r.공종}</span><span class="sync-pill ${pillClass}">${pillText}</span></span>
       <span class="actions"><span class="edit" data-i="${i}">수정</span><span class="del" data-i="${i}">삭제</span></span></div>
@@ -1795,7 +1871,7 @@ function renderLog(){
 
 /* ---------- CSV 내보내기 (조사양식 컬럼 구조 + 변환좌표 포함) ---------- */
 const CSV_COLUMNS = [
-  "기관명","관리대상(동)","부속시설","세부위치","관리번호",
+  "조사일자","기관명","관리대상(동)","부속시설","세부위치","관리번호",
   "공종","공사설비","품목","자산명(명칭)","규격/모델/사양","설치년도","단위","수량","제조사",
   "현행화결과","현장수량","현장규격","불일치/신규사유","상태등급","외관상태","기능상태","안전상태","상태 비고",
   "대상확인사진","규격확인사진","추가사진","위도(WGS84)","경도(WGS84)","좌표취득방법",
