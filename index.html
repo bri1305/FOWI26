@@ -199,11 +199,14 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   .sync-bar{background:var(--forest-mid); padding:12px 16px 14px; color:#fff;}
   .sync-row{display:flex; align-items:center; gap:8px; margin-bottom:7px;}
   .sync-row:last-child{margin-bottom:0;}
-  .sync-bar input{
+  .sync-bar input, .sync-bar select{
     flex:1; border:1px solid rgba(255,255,255,.4); background:rgba(255,255,255,.12); color:#fff;
     border-radius:6px; padding:8px 10px; font-size:13px; font-family:var(--sans);
+    height:36px; box-sizing:border-box; -webkit-appearance:none; appearance:none;
   }
   .sync-bar input::placeholder{color:rgba(255,255,255,.7);}
+  .sync-bar select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='white'><path d='M5.5 7.5l4.5 4.5 4.5-4.5z'/></svg>"); background-repeat:no-repeat; background-position:right 10px center; background-size:14px; padding-right:28px;}
+  .sync-bar select option{color:#1C1F1C;}
   .net-badge{font-size:9px; color:#7FD48A;}
   .net-badge.off{color:#E0A96D;}
   .sync-summary{font-size:12px; color:#DCEBD4;}
