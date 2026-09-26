@@ -1237,28 +1237,32 @@ function buildPhotoFileName(rec, seq, ext){
 }
 
 // 사진 실제 파일을 Supabase Storage(survey-photos 버킷)로 업로드한다.
-// 로컬(IndexedDB)에 원본이 없으면(이미 업로드되어 지워졌거나, 애초에 사진이 없는 슬롯이면)
-// 더 할 일이 없다는 뜻이므로 완료로 처리한다.
-// recId 폴더로 묶는 이유: 같은 기관/건물/공종/품목/날짜 조합의 기록이 두 건
-// 이상 생기더라도(예: 같은 날 같은 품목을 두 번 조사) 파일이 서로 덮어써지지
-// 않도록, 사람이 보는 파일명은 요청하신 규칙을 따르되 실제 저장 위치는 항상
-// 기록마다 고유한 폴더(recId)로 나눈다.
+// 로컬(IndexedDB)에 원본이 없으면(애초에 사진이 없는 슬롯이면) 더 할 일이
+// 없다는 뜻이므로 완료로 처리한다.
+//
+// 중요: Supabase Storage는 저장 경로(키)에 한글 같은 비-ASCII 문자가 들어가면
+// 업로드 요청 자체를 400 오류로 거부한다 (기관명_관리대상_공종_품목 등 한글이
+// 파일명에 들어가면서 이 문제가 생겨, 최근 사진이 전혀 업로드되지 않고 있었다).
+// 그래서 실제 저장 경로는 recId/순번.확장자 처럼 항상 영문·숫자만 쓰고,
+// 사람이 보기 좋은 한글 파일명(기관명_관리대상(동)_공종_품목명_날짜6자리_넘버링)은
+// 다운로드할 때 표시되는 이름으로만 사용한다(download 옵션).
 async function uploadOnePhoto(rec, slot, seq, applyUrl){
   const recId = rec._id;
   const key = recId + ":" + slot;
   const stored = await getBlob(key);
   if (!stored) return true;
   const ext = extFromPhoto(stored.name, stored.type || (stored.blob && stored.blob.type));
-  const fileName = buildPhotoFileName(rec, seq, ext);
-  const path = `${recId}/${fileName}`;
+  const path = `${recId}/${seq}.${ext}`;
+  const downloadName = buildPhotoFileName(rec, seq, ext);
   try{
     const { error } = await sb.storage.from("survey-photos").upload(path, stored.blob, {
       upsert: true, contentType: stored.type || stored.blob.type || "image/jpeg",
     });
     if (error) return false;
-    const { data } = sb.storage.from("survey-photos").getPublicUrl(path);
+    const { data } = sb.storage.from("survey-photos").getPublicUrl(path, { download: downloadName });
     applyUrl(data.publicUrl);
-    await deleteBlob(key);
+    // 업로드에 성공해도 휴대폰에 원본을 그대로 남겨 둔다(요청: 사진이 Supabase와
+    // 개인 모바일 양쪽에 모두 남아 있어야 함) — 그래서 여기서 deleteBlob을 호출하지 않는다.
     return true;
   } catch(e){ return false; }
 }
