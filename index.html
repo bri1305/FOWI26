@@ -1355,23 +1355,64 @@ function buildPhotoFileName(rec, seq, ext){
 // 그래서 실제 저장 경로는 recId/순번.확장자 처럼 항상 영문·숫자만 쓰고,
 // 사람이 보기 좋은 한글 파일명(기관명_관리대상(동)_공종_품목명_날짜6자리_넘버링)은
 // 다운로드할 때 표시되는 이름으로만 사용한다(download 옵션).
+// 업로드가 느린 가장 큰 원인은 최신 휴대폰 카메라 원본이 보통 3~8MB나 되기
+// 때문이다(현장 이동통신망에서는 이게 그대로 체감 대기시간이 됨). 휴대폰에는
+// 원본을 그대로 남겨 두되(IndexedDB, "사진은 서버·휴대폰 양쪽에 모두 남아야
+// 한다"는 요구사항 그대로 유지), 서버로 보내는 사본만 가로/세로 최대
+// 1920px·JPEG 품질 82%로 줄여서 전송량을 보통 80~95% 줄인다 — 현장 기록
+// 확인·보고서 용도로는 이 해상도로 충분하다. 이미 충분히 작은 사진(더 줄여도
+// 별 효과 없는 경우)이나 압축이 실패하는 경우(구형 브라우저 등)에는 원본을
+// 그대로 올린다.
+async function compressImageForUpload(blob, mimeType){
+  try{
+    if (!blob || !(mimeType || blob.type || "").startsWith("image/")) return blob;
+    const MAX_DIM = 1920;
+    const SKIP_IF_UNDER = 900 * 1024; // 900KB 미만이면 재인코딩 없이 그대로 사용
+    if (blob.size <= SKIP_IF_UNDER) return blob;
+    const bitmap = await createImageBitmap(blob).catch(()=>null);
+    if (!bitmap) return blob;
+    const { width, height } = bitmap;
+    const scale = Math.min(1, MAX_DIM / Math.max(width, height));
+    const outW = Math.max(1, Math.round(width * scale));
+    const outH = Math.max(1, Math.round(height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = outW; canvas.height = outH;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0, outW, outH);
+    if (bitmap.close) bitmap.close();
+    const outBlob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", 0.82));
+    if (!outBlob) return blob;
+    // 압축 결과가 오히려 더 크면(이미 고효율로 압축된 사진 등) 원본을 그대로 쓴다.
+    return outBlob.size < blob.size ? outBlob : blob;
+  } catch(e){
+    return blob;
+  }
+}
+
 async function uploadOnePhoto(rec, slot, seq, applyUrl){
   const recId = rec._id;
   const key = recId + ":" + slot;
   const stored = await getBlob(key);
   if (!stored) return true;
-  const ext = extFromPhoto(stored.name, stored.type || (stored.blob && stored.blob.type));
+  const origType = stored.type || (stored.blob && stored.blob.type) || "";
+  const uploadBlob = await compressImageForUpload(stored.blob, origType);
+  const wasCompressed = uploadBlob !== stored.blob;
+  // 압축했으면 항상 jpg로 저장(재인코딩 결과가 JPEG이므로), 압축하지 않았으면
+  // 원래 확장자를 그대로 유지한다.
+  const ext = wasCompressed ? "jpg" : extFromPhoto(stored.name, origType);
+  const contentType = wasCompressed ? "image/jpeg" : (origType || "image/jpeg");
   const path = `${recId}/${seq}.${ext}`;
   const downloadName = buildPhotoFileName(rec, seq, ext);
   try{
-    const { error } = await sb.storage.from("survey-photos").upload(path, stored.blob, {
-      upsert: true, contentType: stored.type || stored.blob.type || "image/jpeg",
+    const { error } = await sb.storage.from("survey-photos").upload(path, uploadBlob, {
+      upsert: true, contentType,
     });
     if (error) return false;
     const { data } = sb.storage.from("survey-photos").getPublicUrl(path, { download: downloadName });
     applyUrl(data.publicUrl);
-    // 업로드에 성공해도 휴대폰에 원본을 그대로 남겨 둔다(요청: 사진이 Supabase와
-    // 개인 모바일 양쪽에 모두 남아 있어야 함) — 그래서 여기서 deleteBlob을 호출하지 않는다.
+    // 업로드에 성공해도 휴대폰에는 원본(압축 전) 그대로 남겨 둔다(요청: 사진이
+    // Supabase와 개인 모바일 양쪽에 모두 남아 있어야 함) — 그래서 여기서
+    // deleteBlob을 호출하지 않는다.
     return true;
   } catch(e){ return false; }
 }
@@ -1384,26 +1425,38 @@ function photosFullyUploaded(rec){
   return (!needMain || pu.main) && (!needSub || pu.sub) && (!needExtra || pu.extra);
 }
 
+// 사진 슬롯(대상확인/규격확인/추가사진)들은 서로 독립적인 업로드이므로 순서대로
+// 기다리지 않고 동시에 올려서 대기시간을 더 줄인다(슬롯이 3개면 최대 3배 가까이
+// 빨라짐). 슬롯 하나가 실패해도 나머지 슬롯은 그대로 진행되고, 실패한 슬롯만
+// 다음 동기화 때 다시 시도된다.
 async function uploadRecordPhotos(rec){
   if (!rec._photoUploaded) rec._photoUploaded = {};
+  const tasks = [];
   if (rec.대상확인사진 && !rec._photoUploaded.main){
-    const ok = await uploadOnePhoto(rec, "main", 1, (url)=>{ rec.대상확인사진_url = url; });
-    if (ok) rec._photoUploaded.main = true;
+    tasks.push(
+      uploadOnePhoto(rec, "main", 1, (url)=>{ rec.대상확인사진_url = url; })
+        .then(ok => { if (ok) rec._photoUploaded.main = true; })
+    );
   }
   if (rec.규격확인사진 && !rec._photoUploaded.sub){
-    const ok = await uploadOnePhoto(rec, "sub", 2, (url)=>{ rec.규격확인사진_url = url; });
-    if (ok) rec._photoUploaded.sub = true;
+    tasks.push(
+      uploadOnePhoto(rec, "sub", 2, (url)=>{ rec.규격확인사진_url = url; })
+        .then(ok => { if (ok) rec._photoUploaded.sub = true; })
+    );
   }
   if ((rec._extraCount || 0) > 0 && !rec._photoUploaded.extra){
     rec._extraUrls = rec._extraUrls || [];
-    let allOk = true;
-    for (let i=0;i<rec._extraCount;i++){
-      const idx = i;
-      const ok = await uploadOnePhoto(rec, "extra:"+idx, 3+idx, (url)=>{ rec._extraUrls[idx] = url; });
-      if (!ok) allOk = false;
-    }
-    if (allOk) rec._photoUploaded.extra = true;
+    tasks.push((async ()=>{
+      const extraTasks = [];
+      for (let i=0;i<rec._extraCount;i++){
+        const idx = i;
+        extraTasks.push(uploadOnePhoto(rec, "extra:"+idx, 3+idx, (url)=>{ rec._extraUrls[idx] = url; }));
+      }
+      const results = await Promise.all(extraTasks);
+      if (results.every(Boolean)) rec._photoUploaded.extra = true;
+    })());
   }
+  await Promise.all(tasks);
 }
 
 // 사전 등록된 조사항목(draft_items)을 다 조사해서 서버에 정상 동기화되면,
