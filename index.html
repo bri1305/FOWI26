@@ -287,6 +287,10 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 
         <div id="checklistWrap" style="display:none;">
           <div class="f">
+            <label>공종으로 좁혀서 찾기</label>
+            <select id="checklistDisciplineFilter"></select>
+          </div>
+          <div class="f">
             <label>사전 등록된 조사항목 <span id="checklistCount" class="count-pill"></span></label>
             <select id="checklistSelect"></select>
           </div>
@@ -689,6 +693,7 @@ function updatePhotoPath(){
    목록에 없는 항목(신규발견 등)은 "직접 입력"으로 전환해서 그대로 쓸 수 있다. */
 const checklistWrap = document.getElementById("checklistWrap");
 const manualWrap = document.getElementById("manualWrap");
+const checklistDisciplineFilter = document.getElementById("checklistDisciplineFilter");
 const checklistSelect = document.getElementById("checklistSelect");
 const checklistCount = document.getElementById("checklistCount");
 const checklistPreview = document.getElementById("checklistPreview");
@@ -696,6 +701,9 @@ const toManualBtn = document.getElementById("toManualBtn");
 const toChecklistBtn = document.getElementById("toChecklistBtn");
 let itemMode = "manual";
 let currentChecklist = [];
+// 건물 하나에 항목이 많으면(150개 넘는 경우도 있음) 목록에서 원하는 걸 찾기
+// 어려우므로, 먼저 공종을 골라 그 공종의 항목만 보이도록 좁힐 수 있게 한다.
+let currentChecklistFiltered = [];
 // 지금 폼에 채워져 있는 내용이 서버의 어느 draft_items 행에서 왔는지 기억해
 // 둔다 — 저장(동기화) 성공 시 그 행을 status='done'으로 표시하기 위함.
 let currentDraftId = null;
@@ -732,6 +740,7 @@ async function updateItemMode(){
   // 선택" 버튼이 나타나서 원할 때만 그 목록으로 전환해 쓸 수 있다.
   itemMode = "manual";
   currentChecklist = [];
+  currentChecklistFiltered = [];
   currentDraftId = null;
   checklistWrap.style.display = "none";
   manualWrap.style.display = "block";
@@ -754,13 +763,36 @@ async function updateItemMode(){
   // (경쟁 상태로 엉뚱한 건물의 목록이 화면에 뜨는 것을 막기 위함).
   if (siteSelect.value !== site || buildingSelect.value !== building) return;
   currentChecklist = rows;
+  currentChecklistFiltered = rows;
   toChecklistBtn.style.display = currentChecklist.length ? "block" : "none";
-  if (currentChecklist.length) fillChecklistSelect();
+  if (currentChecklist.length){
+    fillChecklistDisciplineFilter();
+    fillChecklistSelect();
+  }
 }
 
+// 이번 건물에 실제로 등록된 항목들이 걸쳐 있는 공종만 필터 목록에 보여준다
+// (없는 공종까지 다 보여주면 오히려 더 헷갈림). DISCIPLINES에 정의된 순서를
+// 그대로 따라서 익숙한 순서(건축→기계→전기…)로 보이게 한다.
+function fillChecklistDisciplineFilter(){
+  const present = new Set(currentChecklist.map(it => it.trade).filter(Boolean));
+  const ordered = Object.keys(DISCIPLINES).filter(d => present.has(d));
+  fillSelect(checklistDisciplineFilter, ordered, "전체 공종 보기");
+}
+
+function applyChecklistDisciplineFilter(){
+  const trade = checklistDisciplineFilter.value;
+  currentChecklistFiltered = trade ? currentChecklist.filter(it => it.trade === trade) : currentChecklist;
+  fillChecklistSelect();
+  if (currentChecklistFiltered.length) applyChecklistItem(0);
+}
+checklistDisciplineFilter.addEventListener("change", applyChecklistDisciplineFilter);
+
 function fillChecklistSelect(){
-  checklistCount.textContent = `${currentChecklist.length}개`;
-  checklistSelect.innerHTML = currentChecklist.map((it,i)=>{
+  const total = currentChecklist.length;
+  const shown = currentChecklistFiltered.length;
+  checklistCount.textContent = shown === total ? `${total}개` : `${shown}개 (전체 ${total}개 중)`;
+  checklistSelect.innerHTML = currentChecklistFiltered.map((it,i)=>{
     const loc = [it.sub_facility, it.detail_location].filter(Boolean).join(" ");
     const name = it.item_type || it.asset_name || it.equip_group || "(품목 미지정)";
     const label = (loc ? `[${loc}] ` : "") + name + (it.equip_group ? ` · ${it.equip_group}` : "");
@@ -769,7 +801,7 @@ function fillChecklistSelect(){
 }
 
 function applyChecklistItem(idx){
-  const it = currentChecklist[idx];
+  const it = currentChecklistFiltered[idx];
   if (!it) return;
   currentDraftId = it.id;
   disciplineSelect.value = it.trade || "";
@@ -826,6 +858,10 @@ toChecklistBtn.addEventListener("click", ()=>{
   itemMode = "checklist";
   checklistWrap.style.display = "block";
   manualWrap.style.display = "none";
+  // 목록으로 전환할 때는 항상 "전체 공종"부터 시작해서, 이전에 골라 둔 공종
+  // 필터가 남아 다른 건물 항목이 안 보이는 일이 없게 한다.
+  checklistDisciplineFilter.value = "";
+  currentChecklistFiltered = currentChecklist;
   fillChecklistSelect();
   applyChecklistItem(Number(checklistSelect.value || 0));
 });
