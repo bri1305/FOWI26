@@ -794,8 +794,9 @@ function fillChecklistSelect(){
   checklistCount.textContent = shown === total ? `${total}개` : `${shown}개 (전체 ${total}개 중)`;
   checklistSelect.innerHTML = currentChecklistFiltered.map((it,i)=>{
     const loc = [it.sub_facility, it.detail_location].filter(Boolean).join(" ");
-    const name = it.item_type || it.asset_name || it.equip_group || "(품목 미지정)";
-    const label = (loc ? `[${loc}] ` : "") + name + (it.equip_group ? ` · ${it.equip_group}` : "");
+    const name = it.item_type || it.asset_name || "(품목 미지정)";
+    // [부속시설 세부위치] 공사설비 > 품목 순으로 표시
+    const label = (loc ? `[${loc}] ` : "") + (it.equip_group ? `${it.equip_group} > ` : "") + name;
     return `<option value="${i}">${label}</option>`;
   }).join("");
 }
